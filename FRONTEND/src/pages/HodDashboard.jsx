@@ -10,7 +10,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '../lib/api.js';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import Sidebar from '../components/Sidebar';
+import Sidebar from '../Components/Sidebar';
 
 const HOD_NAV = (pendingFac, pendingProps, notifications) => [
   { id: 'overview',      label: 'Overview',        icon: LayoutDashboard },

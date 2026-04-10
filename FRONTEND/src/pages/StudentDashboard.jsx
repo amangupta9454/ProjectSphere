@@ -11,7 +11,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '../lib/api.js';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
-import Sidebar from '../components/Sidebar';
+import Sidebar from '../Components/Sidebar';
 
 const TABS = [
   { id: 'overview',      label: 'Dashboard',        icon: LayoutDashboard },

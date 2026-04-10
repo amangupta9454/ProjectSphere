@@ -14,7 +14,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
-import Sidebar from '../components/Sidebar';
+import Sidebar from '../Components/Sidebar';
 
 // ─── Nav items ────────────────────────────────────────────────────────────────
 const ADMIN_NAV = (newReqs = 0) => [
