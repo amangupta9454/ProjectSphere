@@ -9,14 +9,18 @@ const storage = new CloudinaryStorage({
     const name = file.originalname.toLowerCase();
     const mime = file.mimetype.toLowerCase();
 
-    if (mime.includes('pdf') || name.endsWith('.pdf') || name.endsWith('.docx') || name.endsWith('.doc')) {
-      folder = `fyp/documents/${req.user._id}`;
+    const userId = req.user ? req.user._id : 'unregistered';
+
+    if (file.fieldname === 'profilePhoto' || mime.includes('image')) {
+      folder = `fyp/profiles/${userId}`;
+    } else if (mime.includes('pdf') || name.endsWith('.pdf') || name.endsWith('.docx') || name.endsWith('.doc')) {
+      folder = `fyp/documents/${userId}`;
     } else if (mime.includes('presentation') || name.endsWith('.ppt') || name.endsWith('.pptx')) {
-      folder = `fyp/presentations/${req.user._id}`;
+      folder = `fyp/presentations/${userId}`;
     } else if (mime.includes('zip') || mime.includes('tar') || name.endsWith('.zip') || name.endsWith('.rar')) {
-      folder = `fyp/code/${req.user._id}`;
+      folder = `fyp/code/${userId}`;
     } else {
-      folder = `fyp/misc/${req.user._id}`;
+      folder = `fyp/misc/${userId}`;
     }
 
     return {
