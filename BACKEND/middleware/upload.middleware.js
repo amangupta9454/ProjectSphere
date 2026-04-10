@@ -23,10 +23,15 @@ const storage = new CloudinaryStorage({
       folder = `fyp/misc/${userId}`;
     }
 
+    let rType = 'raw';
+    if (mime.includes('image') || mime.includes('video') || mime.includes('pdf') || name.endsWith('.pdf')) {
+      rType = 'auto';
+    }
+
     return {
       folder,
       public_id: `${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`,
-      resource_type: 'auto',
+      resource_type: rType,
     };
   },
 });
