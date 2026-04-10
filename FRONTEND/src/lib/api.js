@@ -6,9 +6,10 @@ import axios from 'axios';
  * Local dev  → Vite proxy forwards /api/* to http://localhost:5000
  * Netlify    → Set VITE_API_URL=https://your-backend.vercel.app in Netlify env vars
  */
-const BASE_URL = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api`   // production: full backend URL
-  : '/api';                                   // local dev:  Vite proxy
+// Always use the relative path '/api'.
+// In development, Vite's proxy targets http://localhost:5000.
+// In production, netlify.toml's proxy routes it to the Vercel backend.
+const BASE_URL = '/api';
 
 const api = axios.create({
   baseURL: BASE_URL,
