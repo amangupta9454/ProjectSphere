@@ -15,7 +15,7 @@ import StudentDashboard from './pages/StudentDashboard';
 import FacultyDashboard from './pages/FacultyDashboard';
 import HodDashboard from './pages/HodDashboard';
 import AdminDashboard from './pages/AdminDashboard';
-import Footer from './components/Footer';
+import Footer from './Components/Footer';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const user = JSON.parse(localStorage.getItem('user')) || null;
