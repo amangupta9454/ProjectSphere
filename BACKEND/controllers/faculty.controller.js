@@ -2,6 +2,7 @@ import { ProjectProposal } from '../models/Proposal.model.js';
 import { FileSubmission } from '../models/File.model.js';
 import { Deadline } from '../models/Deadline.model.js';
 import { Notification } from '../models/Notification.model.js';
+import { Faculty } from '../models/Faculty.model.js';
 
 export const getFacultyDashboard = async (req, res) => {
   try {
@@ -40,7 +41,7 @@ export const acceptProposal = async (req, res) => {
       { new: true }
     );
     if (!proposal) return res.status(404).json({ message: 'Proposal not found' });
-    await Notification.create({ userId: proposal.studentId, message: `Faculty "${req.user.name}" has accepted your project "${proposal.title}". You may now upload files.`, type: 'approval' });
+    await Notification.create({ userId: proposal.studentId, userModel: 'Student', message: `Faculty "${req.user.name}" has accepted your project "${proposal.title}". You may now upload files.`, type: 'approval' });
     console.log(`\x1b[32m[SUCCESS]\x1b[0m Faculty accepted proposal: ${proposal.title}`);
     res.status(200).json({ message: 'Proposal accepted', proposal });
   } catch (error) {
@@ -59,7 +60,7 @@ export const rejectProposal = async (req, res) => {
       { new: true }
     );
     if (!proposal) return res.status(404).json({ message: 'Proposal not found' });
-    await Notification.create({ userId: proposal.studentId, message: `Your project "${proposal.title}" was rejected by faculty. Reason: ${reason}. HOD will reassign.`, type: 'rejection' });
+    await Notification.create({ userId: proposal.studentId, userModel: 'Student', message: `Your project "${proposal.title}" was rejected by faculty. Reason: ${reason}. HOD will reassign.`, type: 'rejection' });
     console.log(`\x1b[31m[INFO]\x1b[0m Faculty rejected proposal: ${proposal.title}`);
     res.status(200).json({ message: 'Proposal rejected', proposal });
   } catch (error) {
@@ -79,7 +80,7 @@ export const addFeedback = async (req, res) => {
       { new: true }
     );
     if (!proposal) return res.status(404).json({ message: 'Proposal not found or you are not the assigned faculty' });
-    await Notification.create({ userId: proposal.studentId, message: `New feedback from your supervisor on "${proposal.title}": "${message.substring(0, 60)}..."`, type: 'feedback' });
+    await Notification.create({ userId: proposal.studentId, userModel: 'Student', message: `New feedback from your supervisor on "${proposal.title}": "${message.substring(0, 60)}..."`, type: 'feedback' });
     console.log(`\x1b[32m[SUCCESS]\x1b[0m Feedback added to: "${proposal.title}"`);
     res.status(200).json({ message: 'Feedback added', proposal });
   } catch (error) {
@@ -98,7 +99,7 @@ export const updateProgress = async (req, res) => {
       { new: true }
     );
     if (!proposal) return res.status(404).json({ message: 'Proposal not found' });
-    await Notification.create({ userId: proposal.studentId, message: `Your project progress has been updated to ${progress}% by your supervisor.`, type: 'general' });
+    await Notification.create({ userId: proposal.studentId, userModel: 'Student', message: `Your project progress has been updated to ${progress}% by your supervisor.`, type: 'general' });
     console.log(`\x1b[32m[SUCCESS]\x1b[0m Progress updated to ${progress}% for: "${proposal.title}"`);
     res.status(200).json({ message: 'Progress updated', proposal });
   } catch (error) {
@@ -126,12 +127,14 @@ export const assignDeadline = async (req, res) => {
       targetRoles: [],
       targetProjects,
       createdBy: req.user._id,
+      createdModel: 'Faculty',
     });
 
     // Notify students of targeted deadline
     const studentIds = validProjects.map(p => p.studentId);
     const notifications = studentIds.map(userId => ({
       userId,
+      userModel: 'Student',
       message: `New targeted deadline from your supervisor: "${title}" — Due ${new Date(dueDate).toLocaleDateString()}`,
       type: 'deadline'
     }));

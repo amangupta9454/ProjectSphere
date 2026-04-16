@@ -1,5 +1,6 @@
 import { ProjectProposal } from '../models/Proposal.model.js';
-import { User, Faculty } from '../models/User.model.js';
+import { Student } from '../models/Student.model.js';
+import { Faculty } from '../models/Faculty.model.js';
 import { FileSubmission } from '../models/File.model.js';
 import { Deadline } from '../models/Deadline.model.js';
 import { Notification } from '../models/Notification.model.js';
@@ -34,11 +35,11 @@ const getNotificationsForUser = async (userId) => {
 
 export const submitProposal = async (req, res) => {
   try {
-    const { title, description, domain, teamSize, teamMembers, referenceLinks } = req.body;
+    const { title, description, teamSize, teamMembers, referenceLinks } = req.body;
     const existingProposal = await ProjectProposal.findOne({ studentId: req.user._id });
     if (existingProposal) return res.status(400).json({ message: 'Proposal already exists. You can only update it.' });
     const proposal = await ProjectProposal.create({
-      studentId: req.user._id, title, description, domain,
+      studentId: req.user._id, title, description, department: req.user.branch,
       teamSize: teamSize || 1, teamMembers: teamMembers || [],
       referenceLinks: referenceLinks || []
     });
@@ -52,7 +53,7 @@ export const submitProposal = async (req, res) => {
 
 export const updateProposal = async (req, res) => {
   try {
-    const { title, description, domain, teamSize, teamMembers, referenceLinks } = req.body;
+    const { title, description, teamSize, teamMembers, referenceLinks } = req.body;
     const proposal = await ProjectProposal.findOne({ studentId: req.user._id });
     if (!proposal) return res.status(404).json({ message: 'No proposal found' });
     if (!['Rejected (HOD)', 'Rejected (Faculty)'].includes(proposal.status)) {
@@ -60,7 +61,7 @@ export const updateProposal = async (req, res) => {
     }
     proposal.title = title || proposal.title;
     proposal.description = description || proposal.description;
-    proposal.domain = domain || proposal.domain;
+    proposal.department = req.user.branch; // always enforce strict domain
     if (teamSize !== undefined) proposal.teamSize = teamSize;
     if (teamMembers) proposal.teamMembers = teamMembers;
     proposal.referenceLinks = referenceLinks || proposal.referenceLinks;
@@ -115,7 +116,7 @@ export const getFiles = async (req, res) => {
 
 export const getAvailableFaculty = async (req, res) => {
   try {
-    const faculty = await Faculty.find({ isApproved: true, isEmailVerified: true })
+    const faculty = await Faculty.find({ isApproved: true, isEmailVerified: true, department: req.user.branch })
       .select('name email department designation specialization maxStudents');
     
     const facultyWithCounts = await Promise.all(faculty.map(async (f) => {
@@ -154,6 +155,7 @@ export const requestSupervisor = async (req, res) => {
 
     await Notification.create({
       userId: facultyId,
+      userModel: 'Faculty',
       message: `Student ${req.user.name} has requested you as a supervisor for "${proposal.title}".`,
       type: 'request'
     });
@@ -228,6 +230,7 @@ export const submitFinalProject = async (req, res) => {
     if (proposal.assignedFaculty) {
       await Notification.create({
         userId: proposal.assignedFaculty,
+        userModel: 'Faculty',
         message: `Final project submitted for "${proposal.title}".`,
         type: 'submission'
       });
@@ -254,7 +257,7 @@ export const updateStudentProfile = async (req, res) => {
       };
     }
 
-    const student = await User.findByIdAndUpdate(
+    const student = await Student.findByIdAndUpdate(
       req.user._id,
       { $set: updateFields },
       { new: true, runValidators: true }

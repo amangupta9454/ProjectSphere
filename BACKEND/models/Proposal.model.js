@@ -2,10 +2,10 @@ import mongoose from 'mongoose';
 
 const projectProposalSchema = new mongoose.Schema(
   {
-    studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
     title: { type: String, required: true, minlength: 10, maxlength: 120 },
     description: { type: String, required: true, minlength: 100, maxlength: 1000 },
-    domain: { type: String, required: true },
+    department: { type: String, enum: ['Computer Science', 'Electrical', 'Mechanical Polytechnic', 'BCA', 'BBA', 'MBA', 'MCA', 'B.Ed', 'M.Ed'], required: true },
     teamSize: { type: Number, default: 1 },
     teamMembers: [{
       name: String,
@@ -53,9 +53,9 @@ const projectProposalSchema = new mongoose.Schema(
       action: String,
       comment: String,
       reviewedAt: Date,
-      reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Hod' },
     },
-    assignedFaculty: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    assignedFaculty: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty' },
     facultyReview: {
       action: String,
       comment: String,
@@ -66,7 +66,7 @@ const projectProposalSchema = new mongoose.Schema(
       {
         message: { type: String, required: true },
         addedAt: { type: Date, default: Date.now },
-        addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty' },
       },
     ],
     // Linked deadline (optional)

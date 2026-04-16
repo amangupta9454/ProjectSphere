@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      '/api': 'https://project-sphere-phi.vercel.app'
+      '/api': 'http://localhost:5000'
     }
   }
 })

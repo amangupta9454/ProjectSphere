@@ -11,7 +11,8 @@ const deadlineSchema = new mongoose.Schema(
       default: ['all'],
     },
     targetProjects: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProjectProposal' }],
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, refPath: 'createdModel', required: true },
+    createdModel: { type: String, required: true, enum: ['Student', 'Faculty', 'Hod', 'Admin'] },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

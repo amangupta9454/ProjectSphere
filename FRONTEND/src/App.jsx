@@ -25,7 +25,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 };
 
 // Routes where Footer should appear
-const PUBLIC_PATHS = ['/', '/about', '/contact', '/login', '/register/student', '/register/faculty', '/verify-email'];
+const PUBLIC_PATHS = ['/', '/about', '/contact', '/login', '/login/student', '/login/faculty', '/login/hod', '/login/admin', '/register/student', '/register/faculty', '/verify-email'];
 
 function AppContent() {
   const location = useLocation();
@@ -41,9 +41,13 @@ function AppContent() {
         {/* Public Routes (with Navbar) */}
         <Route element={<PublicLayout />}>
            <Route path="/" element={<Home />} />
+           <Route path="/login" element={<Navigate to="/login/student" replace />} />
            <Route path="/about" element={<About />} />
            <Route path="/contact" element={<Contact />} />
-           <Route path="/login" element={<Login />} />
+           <Route path="/login/student" element={<Login role="student" />} />
+           <Route path="/login/faculty" element={<Login role="faculty" />} />
+           <Route path="/login/hod" element={<Login role="hod" />} />
+           <Route path="/login/admin" element={<Login role="admin" />} />
            <Route path="/register/student" element={<StudentRegister />} />
            <Route path="/register/faculty" element={<FacultyRegister />} />
            <Route path="/verify-email" element={<VerifyOTP />} />

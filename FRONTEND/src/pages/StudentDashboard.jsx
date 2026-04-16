@@ -23,7 +23,6 @@ const TABS = [
   { id: 'profile',       label: 'My Profile',        icon: User },
 ];
 
-const DOMAINS = ['AI & ML', 'Web Development', 'App Development', 'Web 3', 'Cybersecurity', 'IoT', 'Other'];
 
 const STATUS_META = {
   'Pending HOD Review': { color: 'yellow', label: 'Pending HOD Review', step: 1 },
@@ -52,7 +51,7 @@ const StudentDashboard = () => {
   const [announcements, setAnnouncements] = useState([]);
 
   // Tab 2: Proposal
-  const [proposalForm, setProposalForm] = useState({ title: '', description: '', domain: 'AI & ML', customDomain: '', teamSize: 1, teamMembers: [], referenceLinks: '' });
+  const [proposalForm, setProposalForm] = useState({ title: '', description: '', teamSize: 1, teamMembers: [], referenceLinks: '' });
   const [submitting, setSubmitting] = useState(false);
   
   // Tab 3: Supervisor
@@ -94,15 +93,13 @@ const StudentDashboard = () => {
         setProposalForm({ 
           title: p.title || '', 
           description: p.description || '', 
-          domain: DOMAINS.includes(p.domain) ? p.domain : 'Other', 
-          customDomain: !DOMAINS.includes(p.domain) ? p.domain : '',
           teamSize: p.teamSize || 1,
           teamMembers: p.teamMembers || [],
           referenceLinks: (p.referenceLinks || []).join(', ') 
         });
       } else {
         // Initialize 1 empty member slot if no proposal
-        setProposalForm(prev => ({...prev, teamMembers: [{ name: '', email: '', mobileNumber: '', course: 'B.Tech', branch: 'CSE', section: 'A' }]}));
+        setProposalForm(prev => ({...prev, teamMembers: [{ name: '', email: '', mobileNumber: '', course: 'B.Tech', branch: 'Computer Science', section: 'A' }]}));
       }
 
       if (dashRes.data.profile) {
@@ -144,13 +141,9 @@ const StudentDashboard = () => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const finalDomain = proposalForm.domain === 'Other' ? proposalForm.customDomain : proposalForm.domain;
-      if (!finalDomain) return toast.error('Please specify the domain');
-
       const payload = {
         title: proposalForm.title,
         description: proposalForm.description,
-        domain: finalDomain,
         teamSize: proposalForm.teamSize,
         teamMembers: proposalForm.teamMembers,
         referenceLinks: proposalForm.referenceLinks ? proposalForm.referenceLinks.split(',').map(l => l.trim()).filter(Boolean) : []
@@ -373,8 +366,9 @@ const StudentDashboard = () => {
                             <>
                               <h2 className="text-2xl font-extrabold text-gray-900 leading-tight">{proposal.title}</h2>
                               <div className="flex gap-2 mt-2">
-                                <span className="text-xs font-bold bg-gray-100 text-gray-600 px-2.5 py-1 rounded-md">{proposal.domain}</span>
+                                <span className="text-xs font-bold bg-gray-100 text-gray-600 px-2.5 py-1 rounded-md">{proposal.department || 'N/A'}</span>
                                 <span className="text-xs font-bold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-md">Team: {proposal.teamMembers?.length || 0}</span>
+                                {proposal.assignedFaculty && <span className="text-xs font-bold bg-green-50 text-green-700 px-2.5 py-1 rounded-md">Supervisor: {proposal.assignedFaculty.name}</span>}
                               </div>
                               <div className={`mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border shadow-sm
                                 ${statusMeta.color === 'red' || statusMeta.color === 'orange' ? 'bg-red-50 text-red-700 border-red-200' :
@@ -501,22 +495,8 @@ const StudentDashboard = () => {
                             placeholder="Enter a descriptive title for your project" value={proposalForm.title}
                             onChange={e => setProposalForm({ ...proposalForm, title: e.target.value })} />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                          <div>
-                            <label className="text-sm font-bold text-gray-700 mb-1.5 block">Domain <span className="text-red-400">*</span></label>
-                            <select required className="w-full bg-gray-50/50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all text-sm font-medium appearance-none"
-                              value={proposalForm.domain} onChange={e => setProposalForm({ ...proposalForm, domain: e.target.value })}>
-                              {DOMAINS.map(d => <option key={d} value={d}>{d}</option>)}
-                            </select>
-                          </div>
-                          {proposalForm.domain === 'Other' && (
-                            <div>
-                              <label className="text-sm font-bold text-gray-700 mb-1.5 block">Specify Domain <span className="text-red-400">*</span></label>
-                              <input required className="w-full bg-gray-50/50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all text-sm font-medium"
-                                placeholder="E.g., Quantum Computing" value={proposalForm.customDomain}
-                                onChange={e => setProposalForm({ ...proposalForm, customDomain: e.target.value })} />
-                            </div>
-                          )}
+                        <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-medium">
+                          🏫 Your proposal will be routed to the <strong>{data.profile?.branch || 'your'}</strong> department HOD automatically.
                         </div>
                         <div>
                           <label className="text-sm font-bold text-gray-700 mb-1.5 block">Project Description <span className="text-red-400">*</span></label>

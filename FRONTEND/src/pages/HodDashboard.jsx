@@ -117,12 +117,18 @@ export default function HodDashboard() {
 
   const resolveProposal = async (id, action) => {
     try {
-      if (action === 'approve') { await api.put(`/hod/proposals/${id}/approve`); toast.success('Proposal approved!'); }
-      else {
+      if (action === 'approve') {
+        await api.put(`/hod/proposals/${id}/approve`);
+        toast.success('Proposal approved! Now assign a faculty supervisor.');
+        // Immediately transition to the assign-faculty modal for this proposal
+        setSelectedFaculty('');
+        setActiveModal({ type: 'assignFac', id });
+      } else {
         if (reason.length < 20) return toast.error('Reason must be >20 chars');
         await api.put(`/hod/proposals/${id}/reject`, { reason }); toast.success('Proposal rejected');
+        setActiveModal({ type: null, id: null }); setReason('');
       }
-      setActiveModal({ type: null, id: null }); setReason(''); fetchDashboard(); if (activeTab === 'projects') fetchProjects();
+      fetchDashboard(); if (activeTab === 'projects') fetchProjects();
     } catch { toast.error('Action failed'); }
   };
 
@@ -689,10 +695,10 @@ export default function HodDashboard() {
                         <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Email</label><input required type="email" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.email} onChange={e => setAddForm({...addForm, email: e.target.value})} /></div>
                         <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Password</label><input required minLength={6} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.password} onChange={e => setAddForm({...addForm, password: e.target.value})} /></div>
                         <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Mobile</label><input required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.mobileNumber} onChange={e => setAddForm({...addForm, mobileNumber: e.target.value})} /></div>
-                        <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Course</label><input required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.course} onChange={e => setAddForm({...addForm, course: e.target.value})} /></div>
-                        <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Branch</label><input required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.branch} onChange={e => setAddForm({...addForm, branch: e.target.value})} /></div>
-                        <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Year</label><input required type="number" min={1} max={5} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.year} onChange={e => setAddForm({...addForm, year: e.target.value})} /></div>
-                        <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Section</label><input required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.section} onChange={e => setAddForm({...addForm, section: e.target.value})} /></div>
+                        <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Course</label><select required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.course} onChange={e => setAddForm({...addForm, course: e.target.value})}><option value="B.Tech">B.Tech</option><option value="M.Tech">M.Tech</option><option value="BCA">BCA</option><option value="MCA">MCA</option><option value="BBA">BBA</option><option value="MBA">MBA</option><option value="B.Ed">B.Ed</option><option value="M.Ed">M.Ed</option></select></div>
+                        <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Branch</label><select required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.branch || data.profile?.department || ''} onChange={e => setAddForm({...addForm, branch: e.target.value})}><option value="Computer Science">Computer Science</option><option value="Electrical">Electrical</option><option value="Mechanical Polytechnic">Mechanical Polytechnic</option><option value="BCA">BCA</option><option value="BBA">BBA</option><option value="MBA">MBA</option><option value="MCA">MCA</option><option value="B.Ed">B.Ed</option><option value="M.Ed">M.Ed</option></select></div>
+                        <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Year</label><select required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.year} onChange={e => setAddForm({...addForm, year: e.target.value})}><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option><option value="4">4th Year</option></select></div>
+                        <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Section</label><select required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.section} onChange={e => setAddForm({...addForm, section: e.target.value})}><option value="A">Section A</option><option value="B">Section B</option><option value="C">Section C</option></select></div>
                       </div>
                       <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all">Add Student</button>
                     </form>
@@ -710,7 +716,7 @@ export default function HodDashboard() {
                         <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Email</label><input required type="email" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.email} onChange={e => setAddForm({...addForm, email: e.target.value})} /></div>
                         <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Password</label><input required minLength={6} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.password} onChange={e => setAddForm({...addForm, password: e.target.value})} /></div>
                         <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Mobile</label><input required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.mobileNumber} onChange={e => setAddForm({...addForm, mobileNumber: e.target.value})} /></div>
-                        <div className="col-span-2"><label className="text-xs font-bold text-gray-500 uppercase mb-1">Department</label><input required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.department} onChange={e => setAddForm({...addForm, department: e.target.value})} /></div>
+                        <div className="col-span-2"><label className="text-xs font-bold text-gray-500 uppercase mb-1">Department</label><select required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.department || data.profile?.department || ''} onChange={e => setAddForm({...addForm, department: e.target.value})}><option value="Computer Science">Computer Science</option><option value="Electrical">Electrical</option><option value="Mechanical Polytechnic">Mechanical Polytechnic</option><option value="BCA">BCA</option><option value="BBA">BBA</option><option value="MBA">MBA</option><option value="MCA">MCA</option><option value="B.Ed">B.Ed</option><option value="M.Ed">M.Ed</option></select></div>
                         <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Designation</label><input required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.designation} onChange={e => setAddForm({...addForm, designation: e.target.value})} /></div>
                         <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Employee ID</label><input required className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" value={addForm.employeeId} onChange={e => setAddForm({...addForm, employeeId: e.target.value})} /></div>
                       </div>
@@ -719,6 +725,64 @@ export default function HodDashboard() {
                   </motion.div>
                 </div>
               )}
+
+              {/* ════ GLOBAL: ASSIGN FACULTY MODAL (appears after HOD approval) ════ */}
+              {activeModal.type === 'assignFac' && activeModal.id && (() => {
+                // Find proposal from pending OR approvedNeedingAssignment lists
+                const allProposals = [...(data.pendingProposals || []), ...(data.approvedNeedingAssignment || [])];
+                const proposal = allProposals.find(p => p._id === activeModal.id);
+                return (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <motion.div initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+                      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h2 className="font-bold text-white text-lg">Assign Faculty Supervisor</h2>
+                            <p className="text-blue-100 text-xs mt-0.5">Choose a faculty from your department to supervise this project.</p>
+                          </div>
+                          <button onClick={() => setActiveModal({ type: null, id: null })} className="text-white/70 hover:text-white transition-colors"><XCircle className="w-5 h-5" /></button>
+                        </div>
+                      </div>
+                      {proposal && (
+                        <div className="p-5 bg-blue-50/50 border-b border-blue-100">
+                          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Project</p>
+                          <p className="font-bold text-gray-900">{proposal.title}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{proposal.studentId?.name} • {proposal.studentId?.course} — {proposal.studentId?.branch}</p>
+                          {proposal.description && <p className="text-xs text-gray-400 mt-2 border-l-4 border-blue-300 pl-2 line-clamp-2">{proposal.description}</p>}
+                        </div>
+                      )}
+                      <div className="p-5 space-y-4">
+                        {approvedFacultyList.length === 0 ? (
+                          <div className="text-center py-6 text-gray-400">
+                            <p className="text-sm font-medium">No approved faculty in your department.</p>
+                            <p className="text-xs mt-1">Add faculty members from the Faculty tab first.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Select Faculty Supervisor</label>
+                            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                              {approvedFacultyList.map(f => (
+                                <label key={f._id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${selectedFaculty === f._id ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-200 hover:bg-blue-50/30'}`}>
+                                  <input type="radio" name="faculty" value={f._id} checked={selectedFaculty === f._id} onChange={e => setSelectedFaculty(e.target.value)} className="accent-blue-600" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-semibold text-gray-900 text-sm truncate">{f.name}</p>
+                                    <p className="text-xs text-gray-500 truncate">{f.department} • {f.email}</p>
+                                  </div>
+                                  {selectedFaculty === f._id && <CheckCircle className="w-4 h-4 text-blue-500 shrink-0" />}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex gap-3 pt-2">
+                          <button onClick={() => { setActiveModal({ type: null, id: null }); setSelectedFaculty(''); }} className="flex-1 py-2.5 text-sm font-bold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all">Skip for Now</button>
+                          <button onClick={() => assignFaculty(activeModal.id)} disabled={!selectedFaculty} className="flex-1 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/25">Assign Supervisor</button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  </div>
+                );
+              })()}
 
             {/* ═══════════════════════ ANNOUNCEMENTS ══════════════════════════ */}
             {activeTab === 'announcements' && (

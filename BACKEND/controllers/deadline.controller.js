@@ -1,24 +1,35 @@
 import { Deadline } from '../models/Deadline.model.js';
 import { Notification } from '../models/Notification.model.js';
-import { User } from '../models/User.model.js';
+import { Student } from '../models/Student.model.js';
+import { Faculty } from '../models/Faculty.model.js';
 
 // Helper: create notifications for all users of given roles
 const notifyUsers = async (roles, message, type = 'deadline') => {
-  let query = {};
-  if (!roles.includes('all')) query.role = { $in: roles };
-  const users = await User.find(query).select('_id');
-  const notifications = users.map(u => ({ userId: u._id, message, type }));
-  await Notification.insertMany(notifications);
+  let notifications = [];
+  if (roles.includes('all') || roles.includes('student')) {
+      const students = await Student.find({}).select('_id');
+      notifications.push(...students.map(u => ({ userId: u._id, userModel: 'Student', message, type })));
+  }
+  if (roles.includes('all') || roles.includes('faculty')) {
+      const faculty = await Faculty.find({}).select('_id');
+      notifications.push(...faculty.map(u => ({ userId: u._id, userModel: 'Faculty', message, type })));
+  }
+  if (notifications.length > 0) {
+      await Notification.insertMany(notifications);
+  }
 };
 
 export const createDeadline = async (req, res) => {
   console.log('\x1b[36m[HOD]\x1b[0m POST /api/hod/deadlines →', req.body?.title);
   try {
     const { title, description, dueDate, targetRoles } = req.body;
+    const pRole = req.user.role.charAt(0).toUpperCase() + req.user.role.slice(1);
+    
     const deadline = await Deadline.create({
       title, description, dueDate,
       targetRoles: targetRoles || ['all'],
       createdBy: req.user._id,
+      createdModel: pRole,
     });
 
     // Notify all target users

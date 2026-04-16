@@ -1,33 +1,36 @@
 import { ProjectProposal } from '../models/Proposal.model.js';
-import { User, Faculty, Student } from '../models/User.model.js';
+import { Faculty } from '../models/Faculty.model.js';
+import { Student } from '../models/Student.model.js';
+import { Hod } from '../models/Hod.model.js';
 import { Notification } from '../models/Notification.model.js';
 import bcrypt from 'bcrypt';
 
 export const getHodDashboard = async (req, res) => {
   try {
-    const unapprovedFaculty = await Faculty.find({ isApproved: false, isEmailVerified: true });
-    const pendingProposals = await ProjectProposal.find({ status: 'Pending HOD Review' })
+    const unapprovedFaculty = await Faculty.find({ isApproved: false, isEmailVerified: true, department: req.user.department });
+    const pendingProposals = await ProjectProposal.find({ status: 'Pending HOD Review', department: req.user.department })
       .populate('studentId', 'name email branch course year section');
     const approvedNeedingAssignment = await ProjectProposal.find({
-      status: { $in: ['HOD Approved', 'Rejected (Faculty)'] }
+      status: { $in: ['HOD Approved', 'Rejected (Faculty)'] },
+      department: req.user.department
     }).populate('studentId', 'name email branch course');
 
     // Class-wise breakdown
-    const students = await Student.find().select('name branch year section course email mobileNumber createdAt');
+    const students = await Student.find({ branch: req.user.department }).select('name branch year section course email mobileNumber createdAt');
     const branchStats = students.reduce((acc, s) => {
       acc[s.branch] = (acc[s.branch] || 0) + 1; return acc;
     }, {});
 
     const stats = {
       totalStudents: students.length,
-      totalFaculty: await Faculty.countDocuments(),
-      activeProjects: await ProjectProposal.countDocuments({ status: { $in: ['Faculty Accepted', 'Submitted'] } }),
+      totalFaculty: await Faculty.countDocuments({ department: req.user.department }),
+      activeProjects: await ProjectProposal.countDocuments({ status: { $in: ['Faculty Accepted', 'Submitted'] }, department: req.user.department }),
       pendingReview: pendingProposals.length,
       branchStats,
     };
 
     // Recent activity — last 10 proposals sorted by updatedAt
-    const recentActivity = await ProjectProposal.find()
+    const recentActivity = await ProjectProposal.find({ department: req.user.department })
       .sort({ updatedAt: -1 }).limit(10)
       .populate('studentId', 'name branch');
 
@@ -42,7 +45,8 @@ export const getHodDashboard = async (req, res) => {
 export const getAllProjects = async (req, res) => {
   try {
     const { status } = req.query;
-    const filter = status && status !== 'all' ? { status } : {};
+    const filter = { department: req.user.department };
+    if (status && status !== 'all') filter.status = status;
     const projects = await ProjectProposal.find(filter)
       .populate('studentId', 'name email branch course year section')
       .populate('assignedFaculty', 'name email department')
@@ -55,9 +59,8 @@ export const getAllProjects = async (req, res) => {
 
 export const getAllStudents = async (req, res) => {
   try {
-    const { branch, year, section, search } = req.query;
-    let filter = {};
-    if (branch) filter.branch = branch;
+    const { year, section, search } = req.query;
+    let filter = { branch: req.user.department };
     if (year) filter.year = year;
     if (section) filter.section = section;
     if (search) filter.name = { $regex: search, $options: 'i' };
@@ -70,7 +73,7 @@ export const getAllStudents = async (req, res) => {
 
 export const getFacultyWorkload = async (req, res) => {
   try {
-    const faculty = await Faculty.find({ isApproved: true }).select('name email department');
+    const faculty = await Faculty.find({ isApproved: true, department: req.user.department }).select('name email department');
     const workload = await Promise.all(faculty.map(async (f) => {
       const count = await ProjectProposal.countDocuments({ assignedFaculty: f._id, status: { $in: ['Faculty Assigned', 'Faculty Accepted', 'Submitted'] } });
       return { ...f.toObject(), projectCount: count };
@@ -85,7 +88,7 @@ export const approveFaculty = async (req, res) => {
   try {
     const faculty = await Faculty.findByIdAndUpdate(req.params.id, { isApproved: true }, { new: true });
     if (!faculty) return res.status(404).json({ message: 'Faculty not found' });
-    await Notification.create({ userId: faculty._id, message: 'Your faculty account has been approved by HOD. You can now log in.', type: 'approval' });
+    await Notification.create({ userId: faculty._id, userModel: 'Faculty', message: 'Your faculty account has been approved by HOD. You can now log in.', type: 'approval' });
     console.log(`\x1b[32m[SUCCESS]\x1b[0m Faculty approved: ${faculty.email}`);
     res.status(200).json({ message: 'Faculty approved successfully', faculty });
   } catch (error) {
@@ -109,7 +112,7 @@ export const rejectFaculty = async (req, res) => {
 
 export const getApprovedFacultyList = async (req, res) => {
   try {
-    const faculty = await Faculty.find({ isApproved: true }).select('name email department');
+    const faculty = await Faculty.find({ isApproved: true, department: req.user.department }).select('name email department');
     res.status(200).json(faculty);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -123,7 +126,7 @@ export const approveProposal = async (req, res) => {
       hodReview: { action: 'Approved', reviewedAt: Date.now(), reviewedBy: req.user._id }
     }, { new: true });
     if (!proposal) return res.status(404).json({ message: 'Proposal not found' });
-    await Notification.create({ userId: proposal.studentId, message: `Your project "${proposal.title}" has been approved by HOD. Faculty will be assigned shortly.`, type: 'approval' });
+    await Notification.create({ userId: proposal.studentId, userModel: 'Student', message: `Your project "${proposal.title}" has been approved by HOD. Faculty will be assigned shortly.`, type: 'approval' });
     console.log(`\x1b[32m[SUCCESS]\x1b[0m Proposal approved by HOD: ${proposal.title}`);
     res.status(200).json({ message: 'Proposal approved by HOD. Now assign a faculty member.', proposal });
   } catch (error) {
@@ -141,7 +144,7 @@ export const rejectProposal = async (req, res) => {
       hodReview: { action: 'Rejected', comment: reason, reviewedAt: Date.now(), reviewedBy: req.user._id }
     }, { new: true });
     if (!proposal) return res.status(404).json({ message: 'Proposal not found' });
-    await Notification.create({ userId: proposal.studentId, message: `Your project "${proposal.title}" was rejected by HOD. Reason: ${reason}`, type: 'rejection' });
+    await Notification.create({ userId: proposal.studentId, userModel: 'Student', message: `Your project "${proposal.title}" was rejected by HOD. Reason: ${reason}`, type: 'rejection' });
     console.log(`\x1b[31m[INFO]\x1b[0m Proposal rejected: ${proposal.title}`);
     res.status(200).json({ message: 'Proposal rejected by HOD', proposal });
   } catch (error) {
@@ -165,8 +168,8 @@ export const assignFacultyToProposal = async (req, res) => {
     proposal.status = 'Faculty Assigned';
     await proposal.save();
 
-    await Notification.create({ userId: proposal.studentId, message: `Faculty "${faculty.name}" has been assigned to your project "${proposal.title}".`, type: 'assignment' });
-    await Notification.create({ userId: facultyId, message: `You have been assigned to supervise "${proposal.title}".`, type: 'assignment' });
+    await Notification.create({ userId: proposal.studentId, userModel: 'Student', message: `Faculty "${faculty.name}" has been assigned to your project "${proposal.title}".`, type: 'assignment' });
+    await Notification.create({ userId: facultyId, userModel: 'Faculty', message: `You have been assigned to supervise "${proposal.title}".`, type: 'assignment' });
 
     console.log(`\x1b[32m[SUCCESS]\x1b[0m Faculty assigned: ${faculty.name} → "${proposal.title}"`);
     res.status(200).json({ message: 'Faculty assigned successfully', proposal });
@@ -179,7 +182,7 @@ export const assignFacultyToProposal = async (req, res) => {
 export const addStudent = async (req, res) => {
   try {
     const { name, email, password, mobileNumber, course, branch, year, section } = req.body;
-    const userExists = await User.findOne({ email });
+    const userExists = await Student.findOne({ email });
     if (userExists) return res.status(400).json({ message: 'User already exists' });
 
     const salt = await bcrypt.genSalt(12);
@@ -204,7 +207,7 @@ export const addStudent = async (req, res) => {
 export const addFaculty = async (req, res) => {
   try {
     const { name, email, password, mobileNumber, department, designation, employeeId } = req.body;
-    const userExists = await User.findOne({ email });
+    const userExists = await Faculty.findOne({ email });
     if (userExists) return res.status(400).json({ message: 'User already exists' });
 
     const salt = await bcrypt.genSalt(12);
@@ -249,7 +252,8 @@ import ExcelJS from 'exceljs';
 export const exportProjectsExcel = async (req, res) => {
   try {
     const { status } = req.query;
-    const filter = status && status !== 'all' ? { status } : {};
+    const filter = { department: req.user.department };
+    if (status && status !== 'all') filter.status = status;
     const projects = await ProjectProposal.find(filter)
       .populate('studentId', 'name email branch course year section mobileNumber')
       .sort({ updatedAt: -1 });
@@ -260,7 +264,7 @@ export const exportProjectsExcel = async (req, res) => {
     // Define columns
     worksheet.columns = [
       { header: 'Project Title', key: 'title', width: 30 },
-      { header: 'Domain', key: 'domain', width: 20 },
+      { header: 'Department', key: 'department', width: 20 },
       { header: 'Status', key: 'status', width: 15 },
       { header: 'Leader Name', key: 'leaderName', width: 20 },
       { header: 'Mobile', key: 'mobileNumber', width: 15 },
@@ -274,7 +278,7 @@ export const exportProjectsExcel = async (req, res) => {
     projects.forEach((p) => {
       worksheet.addRow({
         title: p.title,
-        domain: p.domain,
+        department: p.department,
         status: p.status,
         leaderName: p.studentId?.name || 'N/A',
         mobileNumber: p.studentId?.mobileNumber || 'N/A',
@@ -312,7 +316,7 @@ export const updateProjectSubmission = async (req, res) => {
     proposal.finalSubmission.rejectionReason = status === 'Rejected' ? rejectionReason : '';
     await proposal.save();
 
-    await Notification.create({ userId: proposal.studentId, message: `Your final submission status is now: ${status}.`, type: 'general' });
+    await Notification.create({ userId: proposal.studentId, userModel: 'Student', message: `Your final submission status is now: ${status}.`, type: 'general' });
     
     console.log(`\x1b[32m[SUCCESS]\x1b[0m Final submission for ${proposal.title} updated to ${status}`);
     res.status(200).json({ message: `Submission status updated to ${status}`, proposal });

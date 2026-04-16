@@ -1,28 +1,38 @@
-import React, { useRef } from 'react';
-import { motion, useInView } from 'framer-motion';
+import { useRef, useState, useCallback } from 'react';
+import { motion, useInView, useScroll, useTransform } from 'framer-motion';
 import {
   ArrowRight, BookOpen, ShieldCheck, UploadCloud,
   Users, FileText, CheckCircle, ChevronRight, Zap,
-  GitBranch, Lock, BarChart2, Sparkles, TrendingUp
+  GitBranch, Lock, BarChart2, Sparkles, TrendingUp,
+  Layers, Star, Award, Globe,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
 
 const fadeUp = {
   hidden: { opacity: 0, y: 32 },
   visible: {
     opacity: 1, y: 0,
-    transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] }
-  }
+    transition: { duration: 0.65, ease: [0.22, 1, 0.36, 1] },
+  },
+};
+
+const fadeIn = {
+  hidden: { opacity: 0, scale: 0.97 },
+  visible: {
+    opacity: 1, scale: 1,
+    transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] },
+  },
 };
 
 const stagger = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.1 } }
+  visible: { transition: { staggerChildren: 0.09 } },
 };
 
-function InView({ children, className = '', once = true, margin = '-60px' }) {
+function InView({ children, className = '', once = true }) {
   const ref = useRef(null);
-  const inView = useInView(ref, { once, margin });
+  const inView = useInView(ref, { once, margin: '-60px' });
   return (
     <motion.div
       ref={ref}
@@ -36,36 +46,78 @@ function InView({ children, className = '', once = true, margin = '-60px' }) {
   );
 }
 
+function TiltCard({ children, className = '', intensity = 10 }) {
+  const cardRef = useRef(null);
+  const [style, setStyle] = useState({});
+  const [hovered, setHovered] = useState(false);
+
+  const handleMouseMove = useCallback((e) => {
+    const el = cardRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    const cx = r.width / 2;
+    const cy = r.height / 2;
+    const rx = ((y - cy) / cy) * -intensity;
+    const ry = ((x - cx) / cx) * intensity;
+    setStyle({
+      transform: `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg) scale(1.025)`,
+      transition: 'transform 0.08s ease',
+    });
+  }, [intensity]);
+
+  const handleMouseLeave = useCallback(() => {
+    setHovered(false);
+    setStyle({
+      transform: 'perspective(900px) rotateX(0deg) rotateY(0deg) scale(1)',
+      transition: 'transform 0.55s cubic-bezier(0.22,1,0.36,1)',
+    });
+  }, []);
+
+  const handleMouseEnter = useCallback(() => setHovered(true), []);
+
+  return (
+    <div
+      ref={cardRef}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      style={{ ...style, transformStyle: 'preserve-3d', willChange: 'transform' }}
+      className={className}
+    >
+      {children}
+    </div>
+  );
+}
+
 const FEATURES = [
   {
     icon: BookOpen,
     label: 'Structured Proposals',
     desc: 'Students submit formatted domain scopes and descriptions directly to the department for rapid, auditable review.',
-    border: 'hover:border-cyan-500/40',
-    glow: 'from-cyan-500/10',
-    iconBg: 'bg-cyan-500/10 border-cyan-500/20',
-    iconColor: 'text-cyan-400',
-    accentBar: 'bg-cyan-500',
+    iconBg: 'bg-sky-50',
+    iconColor: 'text-sky-500',
+    ring: 'hover:ring-2 hover:ring-sky-200',
+    accent: '#0ea5e9',
   },
   {
     icon: ShieldCheck,
     label: 'Hierarchical Approvals',
     desc: 'Multi-tiered verification maps HOD conditional clearances sequentially to designated faculty guides.',
-    border: 'hover:border-blue-500/40',
-    glow: 'from-blue-500/10',
-    iconBg: 'bg-blue-500/10 border-blue-500/20',
-    iconColor: 'text-blue-400',
-    accentBar: 'bg-blue-500',
+    iconBg: 'bg-blue-50',
+    iconColor: 'text-blue-500',
+    ring: 'hover:ring-2 hover:ring-blue-200',
+    accent: '#3b82f6',
   },
   {
     icon: UploadCloud,
     label: 'Cloud Deliverables',
     desc: 'Secure Cloudinary integration handles zipped source bundles and compressed presentations with enterprise-grade reliability.',
-    border: 'hover:border-teal-500/40',
-    glow: 'from-teal-500/10',
-    iconBg: 'bg-teal-500/10 border-teal-500/20',
-    iconColor: 'text-teal-400',
-    accentBar: 'bg-teal-500',
+    iconBg: 'bg-teal-50',
+    iconColor: 'text-teal-500',
+    ring: 'hover:ring-2 hover:ring-teal-200',
+    accent: '#14b8a6',
   },
 ];
 
@@ -74,22 +126,25 @@ const STEPS = [
     num: '01',
     title: 'Student Maps Scope',
     desc: 'The lifecycle begins when a student drafts their project idea and registers to the portal network.',
-    accent: 'border-cyan-500/40 bg-cyan-500/5 text-cyan-400',
-    line: 'bg-gradient-to-b from-cyan-500/40 via-blue-500/20 to-transparent',
+    iconBg: 'bg-sky-50',
+    numColor: 'text-sky-600',
+    borderColor: 'border-sky-200',
   },
   {
     num: '02',
     title: 'HOD Assignment',
     desc: 'Department Heads review the global project pool and actively assign proposals to authorised faculty handlers.',
-    accent: 'border-blue-500/40 bg-blue-500/5 text-blue-400',
-    line: 'bg-gradient-to-b from-blue-500/40 via-teal-500/20 to-transparent',
+    iconBg: 'bg-blue-50',
+    numColor: 'text-blue-600',
+    borderColor: 'border-blue-200',
   },
   {
     num: '03',
     title: 'Vault Uploads Active',
     desc: 'Upon faculty acceptance the student dashboard unlocks the secure artifact vault for all deliverable uploads.',
-    accent: 'border-teal-500/40 bg-teal-500/5 text-teal-400',
-    line: null,
+    iconBg: 'bg-teal-50',
+    numColor: 'text-teal-600',
+    borderColor: 'border-teal-200',
   },
 ];
 
@@ -104,619 +159,772 @@ const PILLS = [
   { icon: Sparkles, text: 'Smart assignment engine' },
 ];
 
+const STATS = [
+  { value: '500+', label: 'Active Students', icon: Users },
+  { value: '50+', label: 'Faculty Members', icon: BookOpen },
+  { value: '12K', label: 'Files Stored', icon: UploadCloud },
+  { value: '100%', label: 'Digital Workflow', icon: Zap, accent: true },
+];
+
 export default function Home() {
+  const heroRef = useRef(null);
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
+
+  const heroY = useTransform(scrollYProgress, [0, 1], [0, -90]);
+  const heroBlobY1 = useTransform(scrollYProgress, [0, 1], [0, -130]);
+  const heroBlobY2 = useTransform(scrollYProgress, [0, 1], [0, 70]);
+  const heroBlobY3 = useTransform(scrollYProgress, [0, 1], [0, -60]);
+  const heroScale = useTransform(scrollYProgress, [0, 0.6], [1, 0.97]);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
+
   return (
-    <div
-      className="font-sans min-h-screen text-slate-300 overflow-x-hidden"
-      style={{ background: '#020810' }}
-    >
-      {/* Dot grid */}
-      <div
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.035) 1px, transparent 1px)',
-          backgroundSize: '32px 32px',
-        }}
-      />
+    <div className="min-h-screen bg-slate-50" style={{ overflowX: 'hidden' }}>
+     
 
-      {/* ─── HERO ─────────────────────────────────────────────────────────── */}
-      <section className="relative pt-6 pb-16 sm:pt-8 lg:pt-12 lg:pb-32 overflow-hidden">
-        {/* Ambient glows */}
-        <div
-          className="absolute -top-40 left-1/2 -translate-x-1/2 w-[1100px] h-[700px] rounded-full pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse at center, rgba(6,182,212,0.09) 0%, rgba(59,130,246,0.04) 40%, transparent 70%)' }}
-        />
-        <div
-          className="absolute top-1/2 -right-64 w-[500px] h-[500px] rounded-full pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse at center, rgba(59,130,246,0.07) 0%, transparent 70%)' }}
-        />
-        <div
-          className="absolute top-1/2 -left-64 w-[500px] h-[500px] rounded-full pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse at center, rgba(6,182,212,0.05) 0%, transparent 70%)' }}
-        />
+      <main className="pt-16">
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
+        {/* ─── HERO ─────────────────────────────────────────────────────────── */}
+        <section
+          ref={heroRef}
+          className="relative overflow-hidden"
+          style={{
+            background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 60%, #f0f7ff 100%)',
+            minHeight: '100svh',
+          }}
+        >
+          {/* Top edge line */}
+          <div
+            className="absolute top-0 left-0 right-0 h-px pointer-events-none"
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(14,165,233,0.35), transparent)' }}
+          />
+
+          {/* Parallax background orbs */}
           <motion.div
-            variants={stagger}
-            initial="hidden"
-            animate="visible"
-            className="max-w-4xl mx-auto text-center"
+            style={{ y: heroBlobY1 }}
+            className="absolute pointer-events-none"
+            aria-hidden
           >
-            {/* Badge */}
-            <motion.div variants={fadeUp} className="mb-6 sm:mb-8">
-              <span
-                className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full border text-xs font-semibold tracking-widest uppercase"
-                style={{ background: 'rgba(6,182,212,0.07)', borderColor: 'rgba(6,182,212,0.22)', color: '#22d3ee' }}
-              >
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400" />
-                </span>
-                Portal System Active
-              </span>
-            </motion.div>
-
-            {/* Headline */}
-            <motion.h1
-              variants={fadeUp}
-              className="text-[clamp(2.4rem,7.5vw,5.8rem)] font-black tracking-tight leading-[0.92] mb-6 sm:mb-8 text-white"
-            >
-              ProjectSphere
-              <br />
-              
-            </motion.h1>
-
-            <style>{`
-              @keyframes shimmer {
-                0% { background-position: 0% center; }
-                100% { background-position: 200% center; }
-              }
-              @keyframes float {
-                0%, 100% { transform: translateY(0px); }
-                50% { transform: translateY(-8px); }
-              }
-              .no-scrollbar::-webkit-scrollbar { display: none; }
-              .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-            `}</style>
-
-            {/* Subtitle */}
-            <motion.p
-              variants={fadeUp}
-              className="text-sm sm:text-base md:text-lg text-slate-400 max-w-2xl mx-auto mb-8 sm:mb-10 leading-relaxed"
-            >
-              The central hub for academic project reviews — connecting students with faculty, managing deliverables in the cloud, and eliminating every paperwork bottleneck.
-            </motion.p>
-
-            {/* CTAs */}
-            <motion.div
-              variants={fadeUp}
-              className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4"
-            >
-              <Link
-                to="/register/student"
-                className="group relative inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl font-bold text-sm transition-all duration-300 w-full sm:w-auto justify-center"
-                style={{ background: 'linear-gradient(135deg, #22d3ee, #38bdf8)', color: '#020810', boxShadow: '0 0 40px rgba(6,182,212,0.3), inset 0 1px 0 rgba(255,255,255,0.2)' }}
-                onMouseEnter={e => e.currentTarget.style.boxShadow = '0 0 60px rgba(6,182,212,0.5), inset 0 1px 0 rgba(255,255,255,0.2)'}
-                onMouseLeave={e => e.currentTarget.style.boxShadow = '0 0 40px rgba(6,182,212,0.3), inset 0 1px 0 rgba(255,255,255,0.2)'}
-              >
-                Get Started Free
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
-              </Link>
-              <Link
-                to="/about"
-                className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-bold text-sm text-slate-300 border transition-all duration-300 w-full sm:w-auto justify-center"
-                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(148,163,184,0.15)' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(148,163,184,0.3)'; e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(148,163,184,0.15)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-              >
-                How It Works
-                <ChevronRight className="w-4 h-4 opacity-60 group-hover:translate-x-0.5 transition-transform duration-200" />
-              </Link>
-            </motion.div>
-
-            {/* Trust line */}
-            <motion.div variants={fadeUp} className="mt-8 flex items-center justify-center gap-6 text-xs text-slate-600">
-              {['No setup fees', 'Instant access', 'Secure & private'].map((item, i) => (
-                <span key={item} className="flex items-center gap-1.5">
-                  <CheckCircle className="w-3 h-3 text-cyan-600" />
-                  {item}
-                </span>
-              ))}
-            </motion.div>
+            <div
+              className="float-anim-slow"
+              style={{
+                position: 'absolute',
+                top: '-80px',
+                left: '-120px',
+                width: '560px',
+                height: '560px',
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(14,165,233,0.10) 0%, rgba(59,130,246,0.05) 60%, transparent 80%)',
+                filter: 'blur(40px)',
+              }}
+            />
           </motion.div>
 
-          {/* Dashboard mock */}
-          <InView className="mt-16 lg:mt-20 max-w-5xl mx-auto" margin="-20px">
-            <motion.div variants={fadeUp}>
-              <div
-                className="relative rounded-2xl overflow-hidden"
-                style={{
-                  border: '1px solid rgba(148,163,184,0.1)',
-                  boxShadow: '0 0 0 1px rgba(6,182,212,0.08), 0 50px 100px rgba(0,0,0,0.7), 0 0 80px rgba(6,182,212,0.06)',
-                }}
+          <motion.div
+            style={{ y: heroBlobY2 }}
+            className="absolute right-0 pointer-events-none"
+            aria-hidden
+          >
+            <div
+              className="float-anim-delay"
+              style={{
+                position: 'absolute',
+                top: '60px',
+                right: '-100px',
+                width: '440px',
+                height: '440px',
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(6,182,212,0.08) 0%, rgba(14,165,233,0.04) 60%, transparent 80%)',
+                filter: 'blur(50px)',
+              }}
+            />
+          </motion.div>
+
+          <motion.div
+            style={{ y: heroBlobY3 }}
+            className="absolute pointer-events-none"
+            aria-hidden
+          >
+            <div
+              className="float-anim"
+              style={{
+                position: 'absolute',
+                bottom: '40px',
+                left: '30%',
+                width: '320px',
+                height: '320px',
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(56,189,248,0.06) 0%, transparent 70%)',
+                filter: 'blur(60px)',
+              }}
+            />
+          </motion.div>
+
+          {/* Floating decorative shapes */}
+          <motion.div
+            style={{ y: heroBlobY1 }}
+            className="absolute top-24 right-[8%] pointer-events-none hidden lg:block float-anim"
+            aria-hidden
+          >
+            <div className="w-14 h-14 rounded-2xl bg-white border border-sky-100 card-shadow flex items-center justify-center rotate-12 opacity-70">
+              <BookOpen className="w-6 h-6 text-sky-400" />
+            </div>
+          </motion.div>
+
+          <motion.div
+            style={{ y: heroBlobY2 }}
+            className="absolute top-40 left-[7%] pointer-events-none hidden lg:block float-anim-delay"
+            aria-hidden
+          >
+            <div className="w-12 h-12 rounded-xl bg-white border border-blue-100 card-shadow flex items-center justify-center -rotate-6 opacity-60">
+              <ShieldCheck className="w-5 h-5 text-blue-400" />
+            </div>
+          </motion.div>
+
+          <motion.div
+            style={{ y: heroBlobY3 }}
+            className="absolute bottom-36 right-[12%] pointer-events-none hidden lg:block float-anim-slow"
+            aria-hidden
+          >
+            <div className="w-10 h-10 rounded-xl bg-white border border-teal-100 card-shadow flex items-center justify-center rotate-6 opacity-60">
+              <UploadCloud className="w-4 h-4 text-teal-400" />
+            </div>
+          </motion.div>
+
+          {/* Grid dots pattern */}
+          <div
+            className="absolute inset-0 pointer-events-none opacity-30"
+            style={{
+              backgroundImage: 'radial-gradient(circle, rgba(14,165,233,0.12) 1px, transparent 1px)',
+              backgroundSize: '32px 32px',
+            }}
+          />
+
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <motion.div
+              style={{ y: heroY, scale: heroScale, opacity: heroOpacity }}
+              className="pt-16 sm:pt-24 lg:pt-28 pb-8 sm:pb-12"
+            >
+              <motion.div
+                variants={stagger}
+                initial="hidden"
+                animate="visible"
+                className="max-w-3xl mx-auto text-center"
               >
-                {/* Glow top edge */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px"
-                  style={{ background: 'linear-gradient(90deg, transparent, rgba(6,182,212,0.4), transparent)' }} />
+                <motion.div variants={fadeUp} className="mb-7">
+                  <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-50 border border-sky-200 text-sky-600 text-xs font-semibold tracking-widest uppercase shadow-sm">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-sky-500" />
+                    </span>
+                    Portal System Active
+                  </span>
+                </motion.div>
 
-                {/* Browser chrome */}
-                <div
-                  className="flex items-center gap-3 px-5 py-3.5 border-b"
-                  style={{ background: 'rgba(10,18,36,0.98)', borderColor: 'rgba(148,163,184,0.08)' }}
+                <motion.h1
+                  variants={fadeUp}
+                  className="text-[clamp(2.4rem,6.5vw,4.8rem)] font-black tracking-tight leading-[0.94] mb-6 text-slate-900"
                 >
-                  <div className="flex gap-1.5">
-                    <span className="w-3 h-3 rounded-full" style={{ background: 'rgba(239,68,68,0.7)' }} />
-                    <span className="w-3 h-3 rounded-full" style={{ background: 'rgba(234,179,8,0.7)' }} />
-                    <span className="w-3 h-3 rounded-full" style={{ background: 'rgba(34,197,94,0.7)' }} />
-                  </div>
-                  <div className="flex-1 mx-4">
-                    <div
-                      className="max-w-[280px] mx-auto h-6 rounded-md flex items-center px-3 text-xs text-slate-500"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
-                    >
-                      <span className="mr-2 opacity-40">🔒</span> portal.university.edu/dashboard
-                    </div>
-                  </div>
-                  <div className="hidden sm:flex items-center gap-1">
-                    {[...Array(3)].map((_, i) => (
-                      <div key={i} className="w-5 h-5 rounded flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.04)' }}>
-                        <div className="w-2.5 h-0.5 rounded-full bg-slate-600" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                  Academic Projects,
+                  <br />
+                  <span className="gradient-text">Managed Seamlessly</span>
+                </motion.h1>
 
-                {/* Dashboard body */}
-                <div
-                  className="grid grid-cols-1 md:grid-cols-4 gap-0"
-                  style={{ background: 'rgba(4,10,20,0.98)' }}
+                <motion.p
+                  variants={fadeUp}
+                  className="text-sm sm:text-base lg:text-lg text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed"
                 >
-                  {/* Sidebar */}
-                  <div className="hidden md:block border-r p-4 space-y-1" style={{ borderColor: 'rgba(148,163,184,0.07)' }}>
-                    <div className="px-3 py-1.5 mb-3">
-                      <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Navigation</p>
+                  ProjectSphere is the central hub for academic project reviews — connecting students
+                  with faculty, managing deliverables in the cloud, and eliminating every paperwork bottleneck.
+                </motion.p>
+
+                <motion.div
+                  variants={fadeUp}
+                  className="flex flex-col sm:flex-row items-center justify-center gap-3"
+                >
+                  <Link
+                    to="/register/student"
+                    className="group inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl font-semibold text-sm text-white shadow-md hover:shadow-sky-200 hover:shadow-lg transition-all duration-200 w-full sm:w-auto justify-center"
+                    style={{ background: 'linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%)' }}
+                  >
+                    Get Started Free
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform duration-200" />
+                  </Link>
+                  <Link
+                    to="/about"
+                    className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-sm text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 hover:border-sky-200 card-shadow hover:card-shadow-hover transition-all duration-200 w-full sm:w-auto justify-center"
+                  >
+                    How It Works
+                    <ChevronRight className="w-4 h-4 opacity-50 group-hover:translate-x-0.5 transition-transform duration-200" />
+                  </Link>
+                </motion.div>
+
+                <motion.div
+                  variants={fadeUp}
+                  className="mt-8 flex flex-wrap items-center justify-center gap-5 text-xs text-slate-400"
+                >
+                  {['No setup fees', 'Instant access', 'Secure & private'].map((item) => (
+                    <span key={item} className="flex items-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                      {item}
+                    </span>
+                  ))}
+                </motion.div>
+              </motion.div>
+            </motion.div>
+
+            {/* Dashboard Mockup */}
+            <InView className="pb-16 sm:pb-20 lg:pb-24 max-w-5xl mx-auto" once>
+              <motion.div variants={fadeIn}>
+                <TiltCard
+                  intensity={5}
+                  className="rounded-2xl overflow-hidden bg-white card-shadow border border-slate-200/80"
+                >
+                  {/* Browser chrome */}
+                  <div className="flex items-center gap-3 px-5 py-3.5 border-b border-slate-100 bg-slate-50">
+                    <div className="flex gap-1.5">
+                      <span className="w-3 h-3 rounded-full bg-red-400/80" />
+                      <span className="w-3 h-3 rounded-full bg-yellow-400/80" />
+                      <span className="w-3 h-3 rounded-full bg-green-400/80" />
                     </div>
-                    {[
-                      { label: 'Dashboard', active: true },
-                      { label: 'My Project', active: false },
-                      { label: 'Submissions', active: false },
-                      { label: 'Faculty', active: false },
-                      { label: 'Documents', active: false },
-                    ].map(({ label, active }) => (
-                      <div
-                        key={label}
-                        className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all cursor-pointer"
-                        style={active ? { background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.15)', color: '#22d3ee' } : { color: 'rgba(148,163,184,0.5)' }}
-                      >
-                        <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-cyan-400' : 'bg-slate-700'}`} />
-                        <span className={active ? 'font-semibold' : ''}>{label}</span>
+                    <div className="flex-1 mx-4">
+                      <div className="max-w-[280px] mx-auto h-6 rounded-md flex items-center px-3 text-xs text-slate-400 bg-white border border-slate-200">
+                        <Lock className="w-3 h-3 mr-1.5 text-slate-300" />
+                        portal.university.edu/dashboard
                       </div>
-                    ))}
+                    </div>
+                    <div className="hidden sm:flex items-center gap-1">
+                      {[...Array(3)].map((_, i) => (
+                        <div key={i} className="w-5 h-5 rounded bg-slate-100 flex items-center justify-center">
+                          <div className="w-2.5 h-0.5 rounded-full bg-slate-300" />
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Main content */}
-                  <div className="md:col-span-3 p-5 md:p-6 space-y-5">
-                    {/* Header row */}
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-slate-600 mb-0.5">Welcome back</p>
-                        <p className="text-sm font-bold text-white">Ahmad Raza's Dashboard</p>
-                      </div>
-                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-green-400"
-                        style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)' }}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                        Active Project
-                      </div>
-                    </div>
-
-                    {/* Stats row */}
-                    <div className="grid grid-cols-3 gap-3">
+                  {/* Dashboard body */}
+                  <div className="grid grid-cols-1 md:grid-cols-4">
+                    {/* Sidebar */}
+                    <div className="hidden md:block border-r border-slate-100 p-4 space-y-1 bg-slate-50/50">
+                      <p className="px-3 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Navigation</p>
                       {[
-                        { label: 'Project Status', value: 'Approved', color: 'text-green-400', bg: 'rgba(34,197,94,0.06)', border: 'rgba(34,197,94,0.15)' },
-                        { label: 'Assigned Faculty', value: 'Dr. Ahmad', color: 'text-cyan-400', bg: 'rgba(6,182,212,0.06)', border: 'rgba(6,182,212,0.15)' },
-                        { label: 'Files Uploaded', value: '4 / 6', color: 'text-blue-400', bg: 'rgba(59,130,246,0.06)', border: 'rgba(59,130,246,0.15)' },
-                      ].map(({ label, value, color, bg, border }) => (
-                        <div key={label} className="rounded-xl p-3.5" style={{ background: bg, border: `1px solid ${border}` }}>
-                          <p className="text-xs text-slate-500 mb-1">{label}</p>
-                          <p className={`text-sm font-bold ${color}`}>{value}</p>
+                        { label: 'Dashboard', active: true },
+                        { label: 'My Project', active: false },
+                        { label: 'Submissions', active: false },
+                        { label: 'Faculty', active: false },
+                        { label: 'Documents', active: false },
+                      ].map(({ label, active }) => (
+                        <div
+                          key={label}
+                          className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs cursor-pointer transition-all ${
+                            active
+                              ? 'bg-sky-50 text-sky-600 font-semibold border border-sky-100'
+                              : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                          }`}
+                        >
+                          <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-sky-500' : 'bg-slate-300'}`} />
+                          {label}
                         </div>
                       ))}
                     </div>
 
-                    {/* Progress card */}
-                    <div className="rounded-xl p-5" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                      <div className="flex items-center justify-between mb-3">
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Submission Progress</p>
-                        <span className="text-xs text-cyan-400 font-bold">67%</span>
+                    {/* Main content */}
+                    <div className="md:col-span-3 p-5 md:p-6 space-y-5 bg-white">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">Welcome back</p>
+                          <p className="text-sm font-bold text-slate-800">Ahmad Raza's Dashboard</p>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 bg-emerald-50 border border-emerald-100">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Active Project
+                        </div>
                       </div>
-                      <div className="h-2 rounded-full overflow-hidden mb-1" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                        <motion.div
-                          className="h-full rounded-full"
-                          style={{ background: 'linear-gradient(90deg, #22d3ee, #60a5fa, #22d3ee)', backgroundSize: '200% auto' }}
-                          initial={{ width: 0 }}
-                          animate={{ width: '67%' }}
-                          transition={{ duration: 1.8, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                        />
-                      </div>
-                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+
+                      <div className="grid grid-cols-3 gap-3">
                         {[
-                          { name: 'Project Proposal.pdf', done: true },
-                          { name: 'Source Code v1.zip', done: true },
-                          { name: 'Presentation Final.pptx', done: false },
-                        ].map(({ name, done }) => (
-                          <div key={name} className="flex items-center gap-2 text-xs">
-                            <CheckCircle className={`w-3.5 h-3.5 shrink-0 ${done ? 'text-cyan-400' : 'text-slate-700'}`} />
-                            <span className={done ? 'text-slate-400' : 'text-slate-600'}>{name}</span>
+                          { label: 'Project Status', value: 'Approved', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+                          { label: 'Assigned Faculty', value: 'Dr. Ahmad', color: 'text-sky-600', bg: 'bg-sky-50', border: 'border-sky-100' },
+                          { label: 'Files Uploaded', value: '4 / 6', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' },
+                        ].map(({ label, value, color, bg, border }) => (
+                          <div key={label} className={`rounded-xl p-3.5 ${bg} border ${border}`}>
+                            <p className="text-xs text-slate-500 mb-1">{label}</p>
+                            <p className={`text-sm font-bold ${color}`}>{value}</p>
                           </div>
                         ))}
                       </div>
+
+                      <div className="rounded-xl p-5 bg-slate-50 border border-slate-100">
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Submission Progress</p>
+                          <span className="text-xs text-sky-600 font-bold">67%</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-200 overflow-hidden mb-1">
+                          <motion.div
+                            className="h-full rounded-full"
+                            style={{ background: 'linear-gradient(90deg, #38bdf8, #3b82f6)' }}
+                            initial={{ width: 0 }}
+                            animate={{ width: '67%' }}
+                            transition={{ duration: 1.6, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                          />
+                        </div>
+                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {[
+                            { name: 'Project Proposal.pdf', done: true },
+                            { name: 'Source Code v1.zip', done: true },
+                            { name: 'Presentation Final.pptx', done: false },
+                          ].map(({ name, done }) => (
+                            <div key={name} className="flex items-center gap-2 text-xs">
+                              <CheckCircle className={`w-3.5 h-3.5 shrink-0 ${done ? 'text-sky-500' : 'text-slate-300'}`} />
+                              <span className={done ? 'text-slate-600' : 'text-slate-400'}>{name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            </motion.div>
-          </InView>
-        </div>
-      </section>
+                </TiltCard>
+              </motion.div>
+            </InView>
+          </div>
+        </section>
 
-      {/* ─── STATS ────────────────────────────────────────────────────────── */}
-      <section
-        className="relative py-12 sm:py-16 border-y overflow-hidden"
-        style={{ borderColor: 'rgba(148,163,184,0.07)', background: 'rgba(6,182,212,0.02)' }}
-      >
-        <div className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse 60% 100% at 50% 50%, rgba(6,182,212,0.04) 0%, transparent 70%)' }} />
-        <InView className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
-            {[
-              { value: '500+', label: 'Active Students', icon: Users },
-              { value: '50+', label: 'Faculty Members', icon: BookOpen },
-              { value: '12K', label: 'Files Stored', icon: UploadCloud },
-              { value: '100%', label: 'Digital Workflow', icon: Zap, accent: true },
-            ].map(({ value, label, icon: Icon, accent }) => (
+        {/* ─── STATS ────────────────────────────────────────────────────────── */}
+        <section
+          className="py-14 sm:py-16 border-y border-slate-200"
+          style={{ background: 'linear-gradient(180deg, #f8fbff 0%, #f0f7ff 100%)' }}
+        >
+          <InView className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+              {STATS.map(({ value, label, icon: Icon, accent }) => (
+                <motion.div key={label} variants={fadeUp}>
+                  <TiltCard
+                    className={`group relative p-6 rounded-2xl bg-white border card-shadow text-center transition-all duration-300 cursor-default ${
+                      accent ? 'border-sky-200' : 'border-slate-200'
+                    }`}
+                    intensity={8}
+                  >
+                    <div
+                      className={`w-10 h-10 mx-auto mb-3 rounded-xl flex items-center justify-center ${accent ? 'bg-sky-50' : 'bg-slate-50'}`}
+                    >
+                      <Icon
+                        className={`${accent ? 'text-sky-500' : 'text-slate-400'}`}
+                        style={{ width: '18px', height: '18px' }}
+                      />
+                    </div>
+                    <div
+                      className={`text-3xl sm:text-4xl font-black mb-1.5 tracking-tight ${accent ? 'text-sky-600' : 'text-slate-800'}`}
+                      style={accent ? { background: 'linear-gradient(135deg,#0ea5e9,#3b82f6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' } : {}}
+                    >
+                      {value}
+                    </div>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">{label}</p>
+                  </TiltCard>
+                </motion.div>
+              ))}
+            </div>
+          </InView>
+        </section>
+
+        {/* ─── CAPABILITY PILLS ─────────────────────────────────────────────── */}
+        <div className="py-5 bg-white border-b border-slate-100">
+          <div className="flex gap-2.5 overflow-x-auto px-4 sm:px-6 no-scrollbar max-w-7xl mx-auto flex-wrap justify-center">
+            {PILLS.map(({ icon: Icon, text }) => (
               <motion.div
-                key={label}
-                variants={fadeUp}
-                className="relative text-center p-6 rounded-2xl group cursor-default"
-                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = accent ? 'rgba(6,182,212,0.2)' : 'rgba(255,255,255,0.1)'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'}
+                key={text}
+                whileHover={{ scale: 1.05, y: -1 }}
+                transition={{ duration: 0.15 }}
+                className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium text-slate-500 border border-slate-200 bg-slate-50 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-600 whitespace-nowrap transition-colors duration-200 cursor-default"
               >
-                <div className={`w-8 h-8 mx-auto mb-3 rounded-lg flex items-center justify-center ${accent ? 'bg-cyan-500/10' : 'bg-slate-800/80'}`}>
-                  <Icon className={`w-4 h-4 ${accent ? 'text-cyan-400' : 'text-slate-500'}`} />
-                </div>
-                <div
-                  className={`text-3xl sm:text-4xl lg:text-5xl font-black mb-2 tracking-tight ${accent ? 'text-cyan-400' : 'text-white'}`}
-                  style={accent ? { textShadow: '0 0 30px rgba(6,182,212,0.5)' } : {}}
-                >
-                  {value}
-                </div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">{label}</p>
+                <Icon className="w-3.5 h-3.5" />
+                {text}
               </motion.div>
             ))}
           </div>
-        </InView>
-      </section>
-
-      {/* ─── CAPABILITY PILLS ─────────────────────────────────────────────── */}
-      <div className="relative py-6 overflow-hidden border-b" style={{ borderColor: 'rgba(148,163,184,0.06)' }}>
-        <div className="flex gap-3 overflow-x-auto px-4 sm:px-6 no-scrollbar max-w-7xl mx-auto flex-wrap justify-center">
-          {PILLS.map(({ icon: Icon, text }) => (
-            <div
-              key={text}
-              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium text-slate-400 border whitespace-nowrap transition-all duration-200 cursor-default hover:text-slate-300"
-              style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(148,163,184,0.1)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(6,182,212,0.25)'; e.currentTarget.style.background = 'rgba(6,182,212,0.05)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(148,163,184,0.1)'; e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
-            >
-              <Icon className="w-3.5 h-3.5 text-slate-500" />
-              {text}
-            </div>
-          ))}
         </div>
-      </div>
 
-      {/* ─── FEATURES ─────────────────────────────────────────────────────── */}
-      <section className="py-24 sm:py-32 relative overflow-hidden">
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(6,182,212,0.05) 0%, transparent 70%)' }}
-        />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
-          <InView>
-            <motion.div variants={fadeUp} className="text-center mb-14 sm:mb-20">
-              <span
-                className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase mb-5"
-                style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.18)', color: '#22d3ee' }}
-              >
-                Core Capabilities
-              </span>
-              <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight mb-5 leading-tight">
-                Enterprise-Grade Tools
-                <br />
-                <span className="text-slate-400 font-normal text-2xl sm:text-3xl md:text-4xl">Built for Academia</span>
-              </h2>
-              <p className="text-slate-400 max-w-xl mx-auto leading-relaxed text-sm sm:text-base">
-                We built the Project Sphere to eliminate paperwork constraints and structural bottlenecks within university departments.
-              </p>
-            </motion.div>
+        {/* ─── FEATURES ─────────────────────────────────────────────────────── */}
+        <section
+          id="features"
+          className="py-24 sm:py-28 relative overflow-hidden"
+          style={{ background: 'linear-gradient(180deg, #f8fbff 0%, #f0f7ff 100%)' }}
+        >
+          {/* Background accent */}
+          <div
+            className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] pointer-events-none"
+            style={{ background: 'radial-gradient(ellipse, rgba(14,165,233,0.05) 0%, transparent 70%)', filter: 'blur(40px)' }}
+          />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
-              {FEATURES.map(({ icon: Icon, label, desc, border, glow, iconBg, iconColor, accentBar }) => (
-                <motion.div
-                  key={label}
-                  variants={fadeUp}
-                  className={`group relative rounded-2xl p-7 sm:p-8 border border-slate-800/80 ${border} transition-all duration-500 overflow-hidden cursor-default`}
-                  style={{ background: 'rgba(12,20,38,0.7)', backdropFilter: 'blur(16px)' }}
-                >
-                  {/* Hover glow */}
-                  <div className={`absolute inset-0 bg-gradient-to-br ${glow} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-                  {/* Top accent */}
-                  <div className={`absolute top-0 left-8 right-8 h-px ${accentBar} opacity-0 group-hover:opacity-20 transition-opacity duration-500`} />
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <InView>
+              <motion.div variants={fadeUp} className="text-center mb-14">
+                <span className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase mb-4 bg-sky-50 border border-sky-200 text-sky-600">
+                  Core Capabilities
+                </span>
+                <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight mb-4 leading-tight">
+                  Enterprise-Grade Tools
+                  <br />
+                  <span className="text-slate-400 font-light text-2xl sm:text-3xl">Built for Academia</span>
+                </h2>
+                <p className="text-slate-500 max-w-xl mx-auto leading-relaxed text-sm sm:text-base">
+                  We built ProjectSphere to eliminate paperwork constraints and structural bottlenecks within university departments.
+                </p>
+              </motion.div>
 
-                  <div className={`relative w-12 h-12 ${iconBg} border rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300`}>
-                    <Icon className={`w-5 h-5 ${iconColor}`} />
-                  </div>
-                  <h3 className="relative text-base sm:text-lg font-bold text-white mb-3">{label}</h3>
-                  <p className="relative text-sm text-slate-400 leading-relaxed">{desc}</p>
-
-                  <div className="relative mt-6 flex items-center gap-1.5 text-xs font-semibold text-slate-600 group-hover:text-slate-500 transition-colors">
-                    Learn more <ChevronRight className="w-3.5 h-3.5" />
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </InView>
-        </div>
-      </section>
-
-      {/* ─── HOW IT WORKS ─────────────────────────────────────────────────── */}
-      <section
-        className="py-24 sm:py-32 relative border-t overflow-hidden"
-        style={{ borderColor: 'rgba(148,163,184,0.07)', background: 'rgba(255,255,255,0.01)' }}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <InView>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 lg:gap-24 items-center">
-              {/* Left */}
-              <div>
-                <motion.span variants={fadeUp} className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase mb-5"
-                  style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.18)', color: '#22d3ee' }}>
-                  The Workflow
-                </motion.span>
-                <motion.h2 variants={fadeUp} className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight mb-5 leading-tight">
-                  Designed for
-                  <br />Seamless Operations
-                </motion.h2>
-                <motion.p variants={fadeUp} className="text-slate-400 mb-12 leading-relaxed text-sm sm:text-base">
-                  Our portal ensures complex administrative logic never hinders academic progression. The mapping is intentionally linear, auditable, and fast.
-                </motion.p>
-
-                <div className="relative space-y-0">
-                  {STEPS.map(({ num, title, desc, accent, line }) => (
-                    <motion.div key={num} variants={fadeUp} className="relative flex gap-5 sm:gap-6">
-                      {line && (
-                        <div className={`absolute left-[21px] top-[52px] w-px h-[calc(100%)] ${line}`} />
-                      )}
-                      <div className={`shrink-0 w-[43px] h-[43px] rounded-xl border ${accent} flex items-center justify-center text-xs font-black`}>
-                        {num}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
+                {FEATURES.map(({ icon: Icon, label, desc, iconBg, iconColor, ring, accent }) => (
+                  <motion.div key={label} variants={fadeUp}>
+                    <TiltCard
+                      className={`group relative rounded-2xl p-7 sm:p-8 bg-white border border-slate-200 card-shadow hover:card-shadow-hover ${ring} transition-all duration-300 overflow-hidden cursor-default h-full`}
+                      intensity={12}
+                    >
+                      {/* Inner glow on hover */}
+                      <div
+                        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none rounded-2xl"
+                        style={{ background: `radial-gradient(ellipse at top left, ${accent}08 0%, transparent 60%)` }}
+                      />
+                      <div className={`w-12 h-12 ${iconBg} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300`}>
+                        <Icon className={`w-5 h-5 ${iconColor}`} />
                       </div>
-                      <div className="pb-10">
-                        <h4 className="text-sm sm:text-base font-bold text-white mb-1.5">{title}</h4>
-                        <p className="text-sm text-slate-400 leading-relaxed">{desc}</p>
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-3">{label}</h3>
+                      <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
+                      <div className="mt-6 flex items-center gap-1.5 text-xs font-semibold text-slate-400 group-hover:text-sky-500 transition-colors">
+                        Learn more <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                       </div>
-                    </motion.div>
-                  ))}
-                </div>
+                    </TiltCard>
+                  </motion.div>
+                ))}
               </div>
+            </InView>
+          </div>
+        </section>
 
-              {/* Right panel */}
-              <motion.div variants={fadeUp} className="relative">
-                <div
-                  className="absolute inset-0 rounded-3xl"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(6,182,212,0.18) 0%, rgba(59,130,246,0.12) 100%)',
-                    filter: 'blur(50px)',
-                    transform: 'scale(0.9)',
-                  }}
-                />
-                <div
-                  className="relative rounded-2xl overflow-hidden"
-                  style={{
-                    border: '1px solid rgba(148,163,184,0.1)',
-                    background: 'rgba(12,20,38,0.9)',
-                    boxShadow: '0 0 0 1px rgba(6,182,212,0.08), 0 30px 60px rgba(0,0,0,0.5)',
-                  }}
-                >
-                  {/* Top edge glow */}
-                  <div className="absolute top-0 left-1/4 right-1/4 h-px"
-                    style={{ background: 'linear-gradient(90deg, transparent, rgba(6,182,212,0.5), transparent)' }} />
+        {/* ─── HOW IT WORKS ─────────────────────────────────────────────────── */}
+        <section
+          id="how-it-works"
+          className="py-24 sm:py-28 bg-white border-t border-slate-100 relative overflow-hidden"
+        >
+          <div
+            className="absolute bottom-0 right-0 w-[500px] h-[500px] pointer-events-none"
+            style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.06) 0%, transparent 70%)', filter: 'blur(60px)' }}
+          />
 
-                  <img
-                    src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
-                    alt="Students collaborating"
-                    className="w-full aspect-[4/3] object-cover opacity-20"
-                  />
-                  <div
-                    className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-8"
-                    style={{ background: 'linear-gradient(180deg, rgba(4,10,20,0.5) 0%, rgba(4,10,20,0.85) 100%)' }}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <InView>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 lg:gap-20 items-center">
+
+                {/* Left */}
+                <div>
+                  <motion.span
+                    variants={fadeUp}
+                    className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase mb-5 bg-sky-50 border border-sky-200 text-sky-600"
                   >
-                    <div className="w-full max-w-sm space-y-3">
+                    The Workflow
+                  </motion.span>
+                  <motion.h2
+                    variants={fadeUp}
+                    className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight mb-5 leading-tight"
+                  >
+                    Designed for
+                    <br />Seamless Operations
+                  </motion.h2>
+                  <motion.p variants={fadeUp} className="text-slate-500 mb-12 leading-relaxed text-sm sm:text-base">
+                    Our portal ensures complex administrative logic never hinders academic progression.
+                    The mapping is intentionally linear, auditable, and fast.
+                  </motion.p>
+
+                  <div className="relative space-y-0">
+                    {STEPS.map(({ num, title, desc, iconBg, numColor, borderColor }, idx) => (
+                      <motion.div key={num} variants={fadeUp} className="relative flex gap-5 sm:gap-6">
+                        {idx < STEPS.length - 1 && (
+                          <div className="absolute left-[21px] top-[50px] w-px h-[calc(100%-4px)] bg-gradient-to-b from-slate-200 to-transparent" />
+                        )}
+                        <div className={`shrink-0 w-11 h-11 rounded-xl border ${borderColor} ${iconBg} flex items-center justify-center hover:scale-110 transition-transform duration-300 cursor-default`}>
+                          <span className={`text-xs font-black ${numColor}`}>{num}</span>
+                        </div>
+                        <div className="pb-10">
+                          <h4 className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">{title}</h4>
+                          <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right panel */}
+                <motion.div variants={fadeIn} className="relative">
+                  <div
+                    className="absolute inset-0 rounded-3xl opacity-50 blur-2xl transform scale-95 pointer-events-none"
+                    style={{ background: 'linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%)' }}
+                  />
+                  <TiltCard
+                    intensity={6}
+                    className="relative rounded-2xl overflow-hidden bg-white border border-slate-200 card-shadow"
+                  >
+                    <div
+                      className="p-6 border-b border-slate-100"
+                      style={{ background: 'linear-gradient(135deg, #f8fbff 0%, #f0f7ff 100%)' }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-9 h-9 rounded-xl flex items-center justify-center"
+                          style={{ background: 'linear-gradient(135deg, #0ea5e9, #3b82f6)' }}
+                        >
+                          <Layers style={{ width: '18px', height: '18px', color: 'white' }} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">Project Lifecycle</p>
+                          <p className="text-xs text-slate-400">Live tracking status</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-6 space-y-3">
                       {[
-                        { label: 'Proposal Submitted', status: 'complete', color: 'text-cyan-400', dot: 'bg-cyan-400', border: 'rgba(6,182,212,0.2)' },
-                        { label: 'HOD Review', status: 'complete', color: 'text-cyan-400', dot: 'bg-cyan-400', border: 'rgba(6,182,212,0.2)' },
-                        { label: 'Faculty Assigned', status: 'active', color: 'text-blue-400', dot: 'bg-blue-400', border: 'rgba(59,130,246,0.25)' },
-                        { label: 'Vault Access Unlocked', status: 'pending', color: 'text-slate-500', dot: 'bg-slate-700', border: 'rgba(255,255,255,0.06)' },
-                      ].map(({ label, status, color, dot, border }) => (
+                        { label: 'Proposal Submitted', status: 'complete', color: 'text-emerald-600', dot: 'bg-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+                        { label: 'HOD Review', status: 'complete', color: 'text-emerald-600', dot: 'bg-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+                        { label: 'Faculty Assigned', status: 'active', color: 'text-sky-600', dot: 'bg-sky-500', bg: 'bg-sky-50', border: 'border-sky-200' },
+                        { label: 'Vault Access Unlocked', status: 'pending', color: 'text-slate-400', dot: 'bg-slate-200', bg: 'bg-slate-50', border: 'border-slate-100' },
+                      ].map(({ label, status, color, dot, bg, border }) => (
                         <div
                           key={label}
-                          className="flex items-center gap-4 px-4 py-3 rounded-xl"
-                          style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${border}` }}
+                          className={`flex items-center gap-4 px-4 py-3.5 rounded-xl ${bg} border ${border} transition-all duration-200 hover:shadow-sm`}
                         >
                           <div className={`w-2 h-2 rounded-full shrink-0 ${dot} ${status === 'active' ? 'animate-pulse' : ''}`} />
                           <span className={`text-xs font-semibold flex-1 ${color}`}>{label}</span>
-                          {status === 'complete' && <CheckCircle className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
-                          {status === 'active' && <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-400 animate-spin border-t-transparent shrink-0" />}
-                          {status === 'pending' && <div className="w-3.5 h-3.5 rounded-full border border-slate-700 shrink-0" />}
+                          {status === 'complete' && <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />}
+                          {status === 'active' && <div className="w-4 h-4 rounded-full border-2 border-sky-400 border-t-transparent animate-spin shrink-0" />}
+                          {status === 'pending' && <div className="w-4 h-4 rounded-full border-2 border-slate-200 shrink-0" />}
                         </div>
                       ))}
                     </div>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          </InView>
-        </div>
-      </section>
 
-      {/* ─── ROLE CARDS ───────────────────────────────────────────────────── */}
-      <section className="py-24 sm:py-28 relative border-t overflow-hidden" style={{ borderColor: 'rgba(148,163,184,0.07)' }}>
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 100%, rgba(59,130,246,0.06) 0%, transparent 70%)' }}
-        />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
-          <InView>
-            <motion.div variants={fadeUp} className="text-center mb-14">
-              <span
-                className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase mb-5"
-                style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', color: '#60a5fa' }}
-              >
-                Role-Based Access
-              </span>
-              <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight">
-                A Portal Built for Everyone
-              </h2>
-            </motion.div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
-              {[
-                {
-                  role: 'Student',
-                  icon: Users,
-                  desc: 'Submit proposals, track approval status, upload deliverables and communicate directly with assigned faculty.',
-                  cta: { label: 'Register as Student', to: '/register/student' },
-                  accent: 'border-cyan-500/25 hover:border-cyan-500/40',
-                  badgeColor: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
-                  ctaBg: 'linear-gradient(135deg, #22d3ee, #38bdf8)',
-                  ctaColor: '#020810',
-                  glowColor: 'rgba(6,182,212,0.1)',
-                },
-                {
-                  role: 'Faculty',
-                  icon: BookOpen,
-                  desc: 'Review assigned projects, provide structured feedback, manage deliverable milestones and report to the department.',
-                  cta: { label: 'Register as Faculty', to: '/register/faculty' },
-                  accent: 'border-blue-500/25 hover:border-blue-500/40',
-                  badgeColor: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-                  ctaBg: 'linear-gradient(135deg, #60a5fa, #3b82f6)',
-                  ctaColor: '#020810',
-                  glowColor: 'rgba(59,130,246,0.1)',
-                },
-                {
-                  role: 'HOD',
-                  icon: ShieldCheck,
-                  desc: 'Oversee department-wide project pools, assign projects to faculty, enforce approvals and monitor overall progress.',
-                  cta: { label: 'HOD Access', to: '/login' },
-                  accent: 'border-teal-500/25 hover:border-teal-500/40',
-                  badgeColor: 'bg-teal-500/10 text-teal-400 border-teal-500/20',
-                  ctaBg: 'linear-gradient(135deg, #2dd4bf, #14b8a6)',
-                  ctaColor: '#020810',
-                  glowColor: 'rgba(20,184,166,0.1)',
-                },
-              ].map(({ role, icon: Icon, desc, cta, accent, badgeColor, ctaBg, ctaColor, glowColor }) => (
-                <motion.div
-                  key={role}
-                  variants={fadeUp}
-                  className={`group relative rounded-2xl p-7 sm:p-8 border border-slate-800/80 ${accent} transition-all duration-300 flex flex-col overflow-hidden`}
-                  style={{ background: 'rgba(12,20,38,0.7)', backdropFilter: 'blur(16px)' }}
-                >
-                  <div
-                    className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
-                    style={{ background: `radial-gradient(ellipse at top, ${glowColor} 0%, transparent 65%)` }}
-                  />
-                  <div className="relative flex-1 flex flex-col">
-                    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mb-5 w-fit ${badgeColor}`}>
-                      <Icon className="w-3.5 h-3.5" />
-                      {role}
+                    <div className="px-6 pb-6">
+                      <div className="rounded-xl p-4 bg-sky-50 border border-sky-100">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-semibold text-sky-700">Overall Progress</span>
+                          <span className="text-xs font-bold text-sky-600">75%</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-sky-100 overflow-hidden">
+                          <motion.div
+                            className="h-full rounded-full"
+                            style={{ background: 'linear-gradient(90deg, #38bdf8, #3b82f6)' }}
+                            initial={{ width: 0 }}
+                            animate={{ width: '75%' }}
+                            transition={{ duration: 1.4, delay: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-sm text-slate-400 leading-relaxed mb-8 flex-1">{desc}</p>
-                    <Link
-                      to={cta.to}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold w-fit group-hover:scale-[1.03] transition-transform duration-200"
-                      style={{ background: ctaBg, color: ctaColor }}
+                  </TiltCard>
+                </motion.div>
+              </div>
+            </InView>
+          </div>
+        </section>
+
+        {/* ─── ROLE CARDS ───────────────────────────────────────────────────── */}
+        <section
+          id="roles"
+          className="py-24 sm:py-28 border-t border-slate-100 relative overflow-hidden"
+          style={{ background: 'linear-gradient(180deg, #f8fbff 0%, #eef6ff 100%)' }}
+        >
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: 'radial-gradient(circle, rgba(14,165,233,0.06) 1px, transparent 1px)',
+              backgroundSize: '36px 36px',
+            }}
+          />
+
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <InView>
+              <motion.div variants={fadeUp} className="text-center mb-14">
+                <span className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase mb-4 bg-blue-50 border border-blue-200 text-blue-600">
+                  Role-Based Access
+                </span>
+                <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight">
+                  A Portal Built for Everyone
+                </h2>
+                <p className="mt-4 text-slate-500 text-sm sm:text-base max-w-xl mx-auto">
+                  Whether you're submitting projects or overseeing an entire department, ProjectSphere has you covered.
+                </p>
+              </motion.div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
+                {[
+                  {
+                    role: 'Student',
+                    icon: Users,
+                    desc: 'Submit proposals, track approval status, upload deliverables and communicate directly with assigned faculty.',
+                    cta: { label: 'Register as Student', to: '/register/student' },
+                    iconBg: 'bg-sky-50',
+                    iconColor: 'text-sky-500',
+                    badgeBg: 'bg-sky-50 text-sky-600 border-sky-200',
+                    ctaGrad: 'linear-gradient(135deg, #0ea5e9, #3b82f6)',
+                    ring: 'hover:border-sky-200',
+                    accent: '#0ea5e9',
+                  },
+                  {
+                    role: 'Faculty',
+                    icon: BookOpen,
+                    desc: 'Review assigned projects, provide structured feedback, manage deliverable milestones and report to the department.',
+                    cta: { label: 'Register as Faculty', to: '/register/faculty' },
+                    iconBg: 'bg-blue-50',
+                    iconColor: 'text-blue-500',
+                    badgeBg: 'bg-blue-50 text-blue-600 border-blue-200',
+                    ctaGrad: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                    ring: 'hover:border-blue-200',
+                    accent: '#3b82f6',
+                  },
+                  {
+                    role: 'HOD',
+                    icon: ShieldCheck,
+                    desc: 'Oversee department-wide project pools, assign projects to faculty, enforce approvals and monitor overall progress.',
+                    cta: { label: 'HOD Access', to: '/login' },
+                    iconBg: 'bg-teal-50',
+                    iconColor: 'text-teal-500',
+                    badgeBg: 'bg-teal-50 text-teal-600 border-teal-200',
+                    ctaGrad: 'linear-gradient(135deg, #14b8a6, #0ea5e9)',
+                    ring: 'hover:border-teal-200',
+                    accent: '#14b8a6',
+                  },
+                ].map(({ role, icon: Icon, desc, cta, iconBg, iconColor, badgeBg, ctaGrad, ring, accent }) => (
+                  <motion.div key={role} variants={fadeUp}>
+                    <TiltCard
+                      className={`group relative rounded-2xl p-7 sm:p-8 bg-white border border-slate-200 ${ring} card-shadow hover:card-shadow-hover transition-all duration-300 flex flex-col h-full cursor-default overflow-hidden`}
+                      intensity={10}
                     >
-                      {cta.label}
-                      <ArrowRight className="w-4 h-4" />
-                    </Link>
-                  </div>
+                      <div
+                        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none rounded-2xl"
+                        style={{ background: `radial-gradient(ellipse at top left, ${accent}08 0%, transparent 65%)` }}
+                      />
+                      <div className={`w-12 h-12 ${iconBg} rounded-2xl flex items-center justify-center mb-5 group-hover:scale-105 transition-transform duration-300`}>
+                        <Icon className={`w-5 h-5 ${iconColor}`} />
+                      </div>
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border mb-4 w-fit ${badgeBg}`}>
+                        {role}
+                      </span>
+                      <p className="text-sm text-slate-500 leading-relaxed mb-8 flex-1">{desc}</p>
+                      <Link
+                        to={cta.to}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white w-fit shadow-sm hover:shadow-md transition-all duration-200 hover:scale-105"
+                        style={{ background: ctaGrad }}
+                      >
+                        {cta.label}
+                        <ArrowRight className="w-4 h-4" />
+                      </Link>
+                    </TiltCard>
+                  </motion.div>
+                ))}
+              </div>
+            </InView>
+          </div>
+        </section>
+
+        {/* ─── TRUST BADGES ─────────────────────────────────────────────────── */}
+        <section className="py-10 bg-white border-t border-slate-100">
+          <InView className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-wrap items-center justify-center gap-8 sm:gap-12">
+              {[
+                { icon: ShieldCheck, label: 'Enterprise Security' },
+                { icon: Globe, label: 'Cloud Infrastructure' },
+                { icon: Award, label: 'Audit Compliant' },
+                { icon: Star, label: 'Rated 5 Stars' },
+                { icon: Zap, label: 'Instant Sync' },
+              ].map(({ icon: Icon, label }) => (
+                <motion.div
+                  key={label}
+                  variants={fadeUp}
+                  whileHover={{ scale: 1.08, color: '#0ea5e9' }}
+                  transition={{ duration: 0.2 }}
+                  className="flex items-center gap-2.5 text-slate-400 cursor-default"
+                >
+                  <Icon style={{ width: '18px', height: '18px' }} />
+                  <span className="text-xs font-semibold uppercase tracking-wider">{label}</span>
                 </motion.div>
               ))}
             </div>
           </InView>
-        </div>
-      </section>
+        </section>
 
-      {/* ─── CTA ──────────────────────────────────────────────────────────── */}
-      <section className="py-24 sm:py-32 relative overflow-hidden border-t" style={{ borderColor: 'rgba(148,163,184,0.07)' }}>
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse 90% 70% at 50% 50%, rgba(6,182,212,0.08) 0%, transparent 70%)' }}
-        />
-        {/* Decorative rings */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          {[600, 800, 1000].map(size => (
-            <div
-              key={size}
-              className="absolute rounded-full"
-              style={{
-                width: size, height: size,
-                border: '1px solid rgba(6,182,212,0.04)',
-              }}
-            />
-          ))}
-        </div>
+        {/* ─── CTA ──────────────────────────────────────────────────────────── */}
+        <section
+          className="py-24 sm:py-32 relative overflow-hidden border-t border-slate-100"
+          style={{ background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f0f9ff 100%)' }}
+        >
+          {/* Mesh dots */}
+          <div
+            className="absolute inset-0 pointer-events-none opacity-50"
+            style={{
+              backgroundImage: 'radial-gradient(circle, rgba(14,165,233,0.1) 1px, transparent 1px)',
+              backgroundSize: '28px 28px',
+            }}
+          />
 
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 relative z-10 text-center">
-          <InView>
-            <motion.span variants={fadeUp} className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase mb-6"
-              style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.18)', color: '#22d3ee' }}>
-              Ready to Begin?
-            </motion.span>
-            <motion.h2 variants={fadeUp} className="text-4xl sm:text-5xl md:text-6xl font-black text-white tracking-tight mb-6 leading-[0.93]">
-              Optimize Your
-              <br />Academic Workflow
-            </motion.h2>
-            <motion.p variants={fadeUp} className="text-slate-400 text-sm sm:text-base md:text-lg mb-10 leading-relaxed max-w-xl mx-auto">
-              Join hundreds of students and faculty using one unified workspace to manage projects from proposal to final submission.
-            </motion.p>
-            <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link
-                to="/register/student"
-                className="inline-flex items-center gap-2.5 px-8 py-4 rounded-xl font-bold text-sm transition-all duration-300 w-full sm:w-auto justify-center"
-                style={{ background: 'linear-gradient(135deg, #22d3ee, #38bdf8)', color: '#020810', boxShadow: '0 0 50px rgba(6,182,212,0.3)' }}
-                onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 0 70px rgba(6,182,212,0.5)'; e.currentTarget.style.transform = 'scale(1.03)'; }}
-                onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 0 50px rgba(6,182,212,0.3)'; e.currentTarget.style.transform = 'scale(1)'; }}
+          {/* Radial glow */}
+          <div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] pointer-events-none"
+            style={{ background: 'radial-gradient(ellipse, rgba(14,165,233,0.12) 0%, transparent 70%)', filter: 'blur(40px)' }}
+          />
+
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
+            <InView>
+              <motion.span
+                variants={fadeUp}
+                className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase mb-6 bg-white border border-sky-200 text-sky-600 shadow-sm"
               >
-                Access Portal Gateway
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-              <Link
-                to="/login"
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-sm text-slate-300 border transition-all duration-300 w-full sm:w-auto justify-center"
-                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(148,163,184,0.15)' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(148,163,184,0.3)'; e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(148,163,184,0.15)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                Ready to Begin?
+              </motion.span>
+              <motion.h2
+                variants={fadeUp}
+                className="text-4xl sm:text-5xl md:text-6xl font-black text-slate-900 tracking-tight mb-6 leading-[0.95]"
               >
-                Sign In
-              </Link>
-            </motion.div>
-          </InView>
-        </div>
-      </section>
+                Optimize Your
+                <br />
+                <span className="gradient-text">Academic Workflow</span>
+              </motion.h2>
+              <motion.p
+                variants={fadeUp}
+                className="text-slate-500 text-sm sm:text-base md:text-lg mb-10 leading-relaxed max-w-xl mx-auto"
+              >
+                Join hundreds of students and faculty using one unified workspace to manage projects
+                from proposal to final submission.
+              </motion.p>
+              <motion.div
+                variants={fadeUp}
+                className="flex flex-col sm:flex-row items-center justify-center gap-4"
+              >
+                <Link
+                  to="/register/student"
+                  className="group inline-flex items-center gap-2.5 px-8 py-4 rounded-xl font-semibold text-sm text-white shadow-md hover:shadow-sky-300 hover:shadow-lg transition-all duration-200 w-full sm:w-auto justify-center"
+                  style={{ background: 'linear-gradient(135deg, #0ea5e9, #3b82f6)' }}
+                >
+                  Access Portal Gateway
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform duration-200" />
+                </Link>
+                <Link
+                  to="/login"
+                  className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-semibold text-sm text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 hover:border-sky-200 card-shadow transition-all duration-200 w-full sm:w-auto justify-center"
+                >
+                  Sign In
+                </Link>
+              </motion.div>
 
-      {/* ─── FOOTER ──────────────────────────────────────────────────────── */}
-     
+              <motion.div variants={fadeUp} className="mt-10 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
+                {['500+ students enrolled', 'Trusted by 10+ universities', '24/7 system uptime'].map((item) => (
+                  <span key={item} className="flex items-center gap-1.5">
+                    <CheckCircle className="w-3.5 h-3.5 text-sky-400" />
+                    {item}
+                  </span>
+                ))}
+              </motion.div>
+            </InView>
+          </div>
+        </section>
+
+      </main>
+
+      
     </div>
   );
 }

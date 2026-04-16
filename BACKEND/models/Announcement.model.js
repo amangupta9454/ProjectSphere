@@ -15,9 +15,10 @@ const announcementSchema = new mongoose.Schema(
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      refPath: 'createdModel',
       required: true,
     },
+    createdModel: { type: String, required: true, enum: ['Student', 'Faculty', 'Hod', 'Admin'] },
     createdByName: { type: String, required: true },
     createdByRole: {
       type: String,

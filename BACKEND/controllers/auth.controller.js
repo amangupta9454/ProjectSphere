@@ -1,4 +1,7 @@
-import { User, Student, Faculty } from '../models/User.model.js';
+import { Student } from '../models/Student.model.js';
+import { Faculty } from '../models/Faculty.model.js';
+import { Hod } from '../models/Hod.model.js';
+import { Admin } from '../models/Admin.model.js';
 import { generateOTP } from '../utils/otp.util.js';
 import { sendEmail } from '../config/nodemailer.js';
 import bcrypt from 'bcrypt';
@@ -10,12 +13,22 @@ const generateTokens = (id) => {
   return { accessToken, refreshToken };
 };
 
+const getModelByRole = (role) => {
+  switch (role) {
+    case 'student': return Student;
+    case 'faculty': return Faculty;
+    case 'hod': return Hod;
+    case 'admin': return Admin;
+    default: return null;
+  }
+};
+
 export const registerStudent = async (req, res) => {
   console.log('\n\x1b[36m[AUTH]\x1b[0m POST /api/auth/register/student →', req.body?.email);
   try {
     const { name, email, password, mobileNumber, course, branch, year, section } = req.body;
 
-    const userExists = await User.findOne({ email });
+    const userExists = await Student.findOne({ email });
     if (userExists) {
       console.log('\x1b[33m[WARN]\x1b[0m Student already exists:', email);
       return res.status(400).json({ message: 'User already exists' });
@@ -58,7 +71,7 @@ export const registerFaculty = async (req, res) => {
   try {
     const { name, email, password, mobileNumber, department, designation, employeeId } = req.body;
 
-    const userExists = await User.findOne({ email });
+    const userExists = await Faculty.findOne({ email });
     if (userExists) {
       console.log('\x1b[33m[WARN]\x1b[0m Faculty already exists:', email);
       return res.status(400).json({ message: 'User already exists' });
@@ -99,8 +112,16 @@ export const registerFaculty = async (req, res) => {
 export const verifyOTP = async (req, res) => {
   console.log('\n\x1b[36m[AUTH]\x1b[0m POST /api/auth/verify-otp →', req.body?.email);
   try {
-    const { email, otp } = req.body;
-    const user = await User.findOne({ email });
+    const { email, otp, role } = req.body;
+    
+    // Fallback to checking student/faculty if no role provided (for backward compat)
+    let user = null;
+    if (role) {
+      const Model = getModelByRole(role.toLowerCase());
+      if (Model) user = await Model.findOne({ email });
+    } else {
+      user = await Student.findOne({ email }) || await Faculty.findOne({ email });
+    }
 
     if (!user) return res.status(404).json({ message: 'User not found' });
     if (user.isEmailVerified) return res.status(400).json({ message: 'Email already verified' });
@@ -110,7 +131,7 @@ export const verifyOTP = async (req, res) => {
     const isMatch = await bcrypt.compare(otp, user.otpHash);
     if (!isMatch) {
       user.otpAttempts += 1;
-      await user.save();
+      await user.save({ validateBeforeSave: false });
       console.log('\x1b[33m[WARN]\x1b[0m Invalid OTP attempt for:', email, '| Attempts:', user.otpAttempts);
       return res.status(400).json({ message: 'Invalid OTP' });
     }
@@ -119,7 +140,7 @@ export const verifyOTP = async (req, res) => {
     user.otpHash = undefined;
     user.otpExpiry = undefined;
     user.otpAttempts = 0;
-    await user.save();
+    await user.save({ validateBeforeSave: false });
 
     console.log('\x1b[32m[SUCCESS]\x1b[0m Email verified for:', email);
     res.status(200).json({ message: 'Email verified successfully.' });
@@ -130,10 +151,21 @@ export const verifyOTP = async (req, res) => {
 };
 
 export const login = async (req, res) => {
-  console.log('\n\x1b[36m[AUTH]\x1b[0m POST /api/auth/login →', req.body?.email);
+  console.log('\n\x1b[36m[AUTH]\x1b[0m POST /api/auth/login →', req.body?.email, 'Role:', req.body?.role);
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    let { email, password, role } = req.body;
+    if (email) email = email.trim().toLowerCase();
+    
+    if (!role) {
+      return res.status(400).json({ message: 'Role is required for login' });
+    }
+
+    const Model = getModelByRole(role.toLowerCase());
+    if (!Model) {
+      return res.status(400).json({ message: 'Invalid role specified' });
+    }
+
+    const user = await Model.findOne({ email });
 
     if (!user) {
       console.log('\x1b[31m[FAIL]\x1b[0m Login - user not found:', email);
@@ -160,8 +192,12 @@ export const login = async (req, res) => {
 
     const { accessToken, refreshToken } = generateTokens(user._id);
     const salt = await bcrypt.genSalt(10);
-    user.refreshToken = await bcrypt.hash(refreshToken, salt);
-    await user.save();
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, salt);
+
+    // Use updateOne to avoid triggering full schema validation on required fields
+    // (e.g. HOD.department) that already exist in the DB but may be absent from
+    // older documents or cause validation errors on unrelated saves.
+    await Model.findByIdAndUpdate(user._id, { refreshToken: hashedRefreshToken }, { new: false });
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
@@ -179,15 +215,20 @@ export const login = async (req, res) => {
 
 export const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
+    const { email, role } = req.body;
+    if (!role) return res.status(400).json({ message: 'Role is required' });
+
+    const Model = getModelByRole(role.toLowerCase());
+    if (!Model) return res.status(400).json({ message: 'Invalid role' });
+
+    const user = await Model.findOne({ email });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const otp = generateOTP();
     const otpHash = await bcrypt.hash(otp, 12);
     user.otpHash = otpHash;
     user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save();
+    await user.save({ validateBeforeSave: false });
 
     await sendEmail(
       email,
@@ -203,8 +244,13 @@ export const forgotPassword = async (req, res) => {
 
 export const verifyResetOtp = async (req, res) => {
   try {
-    const { email, otp } = req.body;
-    const user = await User.findOne({ email });
+    const { email, otp, role } = req.body;
+    if (!role) return res.status(400).json({ message: 'Role is required' });
+
+    const Model = getModelByRole(role.toLowerCase());
+    if (!Model) return res.status(400).json({ message: 'Invalid role' });
+
+    const user = await Model.findOne({ email });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     if (!user.otpHash || !user.otpExpiry) {
@@ -218,8 +264,8 @@ export const verifyResetOtp = async (req, res) => {
     const isValid = await bcrypt.compare(otp, user.otpHash);
     if (!isValid) return res.status(400).json({ message: 'Invalid OTP' });
 
-    // Generate a temporary token to allow reset step securely
-    const resetToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+    // Include role in token to know which collection to update
+    const resetToken = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '15m' });
 
     res.status(200).json({ message: 'OTP verified', resetToken });
   } catch (error) {
@@ -233,16 +279,17 @@ export const resetPassword = async (req, res) => {
     if (newPassword.length < 8) return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
 
     const decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
-    if (!decoded || !decoded.id) return res.status(401).json({ message: 'Invalid or expired reset session.' });
+    if (!decoded || !decoded.id || !decoded.role) return res.status(401).json({ message: 'Invalid or expired reset session.' });
 
-    const user = await User.findById(decoded.id);
+    const Model = getModelByRole(decoded.role.toLowerCase());
+    const user = await Model.findById(decoded.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const salt = await bcrypt.genSalt(12);
     user.password = await bcrypt.hash(newPassword, salt);
     user.otpHash = undefined;
     user.otpExpiry = undefined;
-    await user.save();
+    await user.save({ validateBeforeSave: false });
 
     res.status(200).json({ message: 'Password reset successfully. You can now login.' });
   } catch (error) {

@@ -1,5 +1,8 @@
 import jwt from 'jsonwebtoken';
-import { User } from '../models/User.model.js';
+import { Student } from '../models/Student.model.js';
+import { Faculty } from '../models/Faculty.model.js';
+import { Hod } from '../models/Hod.model.js';
+import { Admin } from '../models/Admin.model.js';
 
 export const protect = async (req, res, next) => {
   let token;
@@ -8,7 +11,10 @@ export const protect = async (req, res, next) => {
       token = req.headers.authorization.split(' ')[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       
-      req.user = await User.findById(decoded.id).select('-password');
+      req.user = await Student.findById(decoded.id).select('-password') || 
+                 await Faculty.findById(decoded.id).select('-password') || 
+                 await Hod.findById(decoded.id).select('-password') || 
+                 await Admin.findById(decoded.id).select('-password');
       if (!req.user) {
         return res.status(401).json({ message: 'Not authorized, user not found' });
       }

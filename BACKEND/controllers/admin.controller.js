@@ -1,4 +1,7 @@
-import { User, Student, Faculty } from '../models/User.model.js';
+import { Student } from '../models/Student.model.js';
+import { Faculty } from '../models/Faculty.model.js';
+import { Hod } from '../models/Hod.model.js';
+import { Admin } from '../models/Admin.model.js';
 import { ProjectProposal } from '../models/Proposal.model.js';
 import { FileSubmission } from '../models/File.model.js';
 import { Announcement } from '../models/Announcement.model.js';
@@ -7,9 +10,9 @@ import { Announcement } from '../models/Announcement.model.js';
 export const getAdminDashboard = async (req, res) => {
   try {
     const stats = await buildStats();
-    const recentLogins  = await User.find().sort({ updatedAt: -1 }).limit(5).select('name role email updatedAt');
+    const recentLogins  = await Student.find().sort({ updatedAt: -1 }).limit(5).select('name role email updatedAt');
     const recentUploads = await FileSubmission.find().sort({ createdAt: -1 }).limit(5).populate('studentId', 'name');
-    const usersList     = await User.find({ role: { $ne: 'admin' } }).sort({ createdAt: -1 }).limit(50);
+    const usersList     = await Student.find().sort({ createdAt: -1 }).limit(50);
 
     res.status(200).json({ stats, recentLogins, recentUploads, usersList });
   } catch (error) {
@@ -174,11 +177,11 @@ export const getAllProjectsFull = async (req, res) => {
 export const getSystemInfo = async (req, res) => {
   try {
     const [recentLogins, recentUploads, allUsers] = await Promise.all([
-      User.find().sort({ updatedAt: -1 }).limit(10).select('name role email updatedAt isEmailVerified isApproved'),
+      Student.find().sort({ updatedAt: -1 }).limit(10).select('name role email updatedAt isEmailVerified isApproved'),
       FileSubmission.find().sort({ createdAt: -1 }).limit(10)
         .populate('studentId', 'name email')
         .populate('projectId', 'title'),
-      User.find({ role: { $ne: 'admin' } }).sort({ createdAt: -1 })
+      Student.find().sort({ createdAt: -1 })
         .select('name role email isEmailVerified isApproved createdAt isBanned'),
     ]);
     res.status(200).json({ recentLogins, recentUploads, allUsers });
@@ -190,10 +193,12 @@ export const getSystemInfo = async (req, res) => {
 // ─── DELETE /admin/users/:id ──────────────────────────────────────────────────
 export const deleteUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    let user = await Student.findById(req.params.id) || await Faculty.findById(req.params.id) || await Hod.findById(req.params.id) || await Admin.findById(req.params.id);
     if (!user)               return res.status(404).json({ message: 'User not found' });
     if (user.role === 'admin') return res.status(403).json({ message: 'Cannot delete other admins.' });
-    await User.findByIdAndDelete(req.params.id);
+    if (user.role === 'student') await Student.findByIdAndDelete(req.params.id);
+    else if (user.role === 'faculty') await Faculty.findByIdAndDelete(req.params.id);
+    else if (user.role === 'hod') await Hod.findByIdAndDelete(req.params.id);
     console.log(`\x1b[31m[ADMIN]\x1b[0m User deleted: ${user.email}`);
     res.status(200).json({ message: 'User permanently deleted from system.' });
   } catch (error) {
@@ -204,7 +209,7 @@ export const deleteUser = async (req, res) => {
 // ─── PUT /admin/users/:id/deactivate ─────────────────────────────────────────
 export const deactivateUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    let user = await Student.findById(req.params.id) || await Faculty.findById(req.params.id) || await Hod.findById(req.params.id) || await Admin.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     if (user.role === 'faculty') {

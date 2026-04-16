@@ -34,12 +34,14 @@ export const createAnnouncement = async (req, res) => {
     const { title, content, targetAudience, pinned } = req.body;
     if (!title || !content) return res.status(400).json({ message: 'Title and content are required.' });
 
+    const pRole = req.user.role.charAt(0).toUpperCase() + req.user.role.slice(1);
     const announcement = await Announcement.create({
       title: title.trim(),
       content: content.trim(),
       targetAudience: targetAudience || 'all',
       pinned: pinned || false,
       createdBy: req.user._id,
+      createdModel: pRole,
       createdByName: req.user.name,
       createdByRole: req.user.role,
     });
