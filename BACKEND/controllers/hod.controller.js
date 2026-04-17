@@ -3,6 +3,7 @@ import { Faculty } from '../models/Faculty.model.js';
 import { Student } from '../models/Student.model.js';
 import { Hod } from '../models/Hod.model.js';
 import { Notification } from '../models/Notification.model.js';
+import { sendEmail } from '../config/nodemailer.js';
 import bcrypt from 'bcrypt';
 
 export const getHodDashboard = async (req, res) => {
@@ -133,9 +134,18 @@ export const approveProposal = async (req, res) => {
     const proposal = await ProjectProposal.findByIdAndUpdate(req.params.id, {
       status: 'HOD Approved',
       hodReview: { action: 'Approved', reviewedAt: Date.now(), reviewedBy: req.user._id }
-    }, { new: true });
+    }, { new: true }).populate('studentId', 'name email');
     if (!proposal) return res.status(404).json({ message: 'Proposal not found' });
-    await Notification.create({ userId: proposal.studentId, userModel: 'Student', message: `Your project "${proposal.title}" has been approved by HOD. Faculty will be assigned shortly.`, type: 'approval' });
+    await Notification.create({ userId: proposal.studentId._id, userModel: 'Student', message: `Your project "${proposal.title}" has been approved by HOD. Faculty will be assigned shortly.`, type: 'approval' });
+    sendEmail(proposal.studentId.email, `✅ Proposal Approved — "${proposal.title}"`,
+      `<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;background:#f0fdf4;border-radius:12px">
+        <h2 style="color:#16a34a">🎉 Your Proposal Has Been Approved!</h2>
+        <p>Hi <strong>${proposal.studentId.name}</strong>,</p>
+        <p>Your project proposal <strong>"${proposal.title}"</strong> has been approved by the HOD.</p>
+        <p>A faculty supervisor will be assigned shortly. You will be notified once assigned.</p>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0"/>
+        <p style="color:#6b7280;font-size:13px">FYP Portal — ProjectSphere</p>
+      </div>`);
     console.log(`\x1b[32m[SUCCESS]\x1b[0m Proposal approved by HOD: ${proposal.title}`);
     res.status(200).json({ message: 'Proposal approved by HOD. Now assign a faculty member.', proposal });
   } catch (error) {

@@ -18,6 +18,7 @@ const TABS = [
   { id: 'proposal',      label: 'Submit Proposal',   icon: BookOpen },
   { id: 'supervisor',    label: 'Supervisor',        icon: Users },
   { id: 'details',       label: 'Project Details',   icon: Target },
+// Tab rename handled via label below
   { id: 'submission',    label: 'Submission & Files', icon: Send },
   { id: 'announcements', label: 'Announcements',     icon: Megaphone },
   { id: 'profile',       label: 'My Profile',        icon: User },
@@ -431,22 +432,32 @@ const StudentDashboard = () => {
                       }
                     </div>
 
-                    {/* Milestone Chart */}
-                    {proposal?.targets?.length > 0 && (
-                      <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-                        <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Target className="w-4 h-4 text-emerald-500" /> Milestone Breakdown</h3>
-                        <div className="h-48 w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie data={chartData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={5} dataKey="value">
-                                {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                              </Pie>
-                              <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                              <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }} />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
+                    {/* Project Status Stepper */}
+                    {proposal && (
+                       <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+                         <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Target className="w-4 h-4 text-emerald-500" /> Project Progress</h3>
+                         {(() => {
+                           const steps=['Pending HOD Review','HOD Approved','Faculty Assigned','Faculty Accepted','Submitted'];
+                           const labels=['HOD Review','HOD OK','Assigned','Active','Submitted'];
+                           const rejected=proposal.status.includes('Rejected');
+                           const idx=rejected?0:Math.max(steps.indexOf(proposal.status),0);
+                           return(
+                             <div className="flex items-center gap-1">
+                               {steps.map((s,i)=>(
+                                 <React.Fragment key={s}>
+                                   <div className={`flex flex-col items-center text-center min-w-[52px] ${i<=idx&&!rejected?'opacity-100':'opacity-30'}`}>
+                                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 ${i<idx?'bg-green-50 border-green-400 text-green-700':i===idx&&!rejected?'bg-blue-50 border-blue-500 ring-4 ring-blue-100':'bg-gray-50 border-gray-200'}`}>
+                                       {i<idx?'✓':i+1}
+                                     </div>
+                                     <p className="text-[9px] font-bold text-gray-600 mt-1">{labels[i]}</p>
+                                   </div>
+                                   {i<4&&<div className={`flex-1 h-0.5 min-w-[8px] ${i<idx&&!rejected?'bg-green-400':'bg-gray-200'}`} />}
+                                 </React.Fragment>
+                               ))}
+                             </div>
+                           );
+                         })()}
+                       </div>
                     )}
                   </div>
                 </div>
@@ -647,55 +658,97 @@ const StudentDashboard = () => {
               </div>
             )}
 
-            {/* ── 4. PROJECT DETAILS & TARGETS ── */}
+            {/* ── 4. PROJECT DETAILS & STATUS ── */}
             {activeTab === 'details' && (
               <div className="space-y-6 max-w-5xl mx-auto">
                 {!proposal ? (
                   <div className="py-12 text-center text-gray-400 bg-white rounded-3xl border border-gray-100 font-medium">Please submit a proposal first.</div>
                 ) : (
                   <>
+                    {/* Proposal Info */}
                     <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
-                       <div className="flex justify-between items-start mb-6">
+                       <div className="flex justify-between items-start mb-4 flex-wrap gap-3">
                          <div>
                             <h2 className="text-2xl font-extrabold text-gray-900">{proposal.title}</h2>
-                            <p className="text-sm font-bold text-blue-600 mt-1">{proposal.domain}</p>
+                            {proposal.domain && <span className="text-xs font-bold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-md mt-2 inline-block border border-indigo-100">{proposal.domain}</span>}
                          </div>
                          <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-lg text-xs font-bold">{proposal.status}</span>
                        </div>
-                       <p className="text-gray-700 text-sm leading-relaxed bg-gray-50 p-5 rounded-2xl border border-gray-100">{proposal.description}</p>
+                       <p className="text-gray-700 text-sm leading-relaxed bg-gray-50 p-5 rounded-2xl border border-gray-100 mb-4">{proposal.description}</p>
+                       {proposal.referenceLinks?.length > 0 && (
+                         <div className="flex flex-wrap gap-2">
+                           {proposal.referenceLinks.map((link, i) => <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">{link}</a>)}
+                         </div>
+                       )}
                     </div>
 
+                    {/* Status Timeline */}
                     <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
-                      <div className="flex justify-between items-end mb-6 border-b border-gray-100 pb-4">
-                        <h3 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest flex items-center gap-2"><CheckSquare className="w-4 h-4 text-green-500" /> Milestone Targets</h3>
-                      </div>
-                      
-                      {/* Add Target Form */}
-                      <form onSubmit={handleAddTarget} className="flex gap-3 mb-8">
-                        <input required className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 text-sm font-medium focus:ring-2 focus:ring-blue-500" placeholder="New target title..." value={newTarget.title} onChange={e => setNewTarget({...newTarget, title: e.target.value})} />
-                        <button type="submit" className="px-4 bg-blue-600 text-white rounded-xl shadow-md hover:bg-blue-700 flex items-center gap-2 font-bold"><Plus className="w-4 h-4"/> Add Target</button>
-                      </form>
-
-                      {/* Targeted List */}
+                      <h3 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-blue-500" /> Status Timeline</h3>
                       <div className="space-y-3">
-                        {proposal.targets?.length === 0 ? <p className="text-center text-sm font-medium text-gray-400 py-4">No targets set yet.</p> : null}
-                        {proposal.targets?.map(t => (
-                          <div key={t._id} className={`flex items-center justify-between p-4 rounded-2xl border ${t.status === 'Completed' ? 'bg-green-50/50 border-green-200' : t.status === 'Ongoing' ? 'bg-blue-50/50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
-                            <div className="flex items-center gap-3">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${t.status === 'Completed' ? 'bg-green-100 text-green-600' : t.status === 'Ongoing' ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'}`}>
-                                {t.status === 'Completed' ? <CheckCircle className="w-4 h-4"/> : t.status === 'Ongoing' ? <RefreshCw className="w-4 h-4 animate-spin-slow"/> : <Clock className="w-4 h-4"/>}
-                              </div>
-                              <p className={`font-bold text-sm ${t.status === 'Completed' ? 'text-green-800 line-through opacity-70' : 'text-gray-900'}`}>{t.title}</p>
+                        {[
+                          { status: 'Pending HOD Review', label: 'Proposal Submitted', icon: '📝', done: true, timestamp: proposal.createdAt, note: null },
+                          { status: 'HOD Approved',       label: 'HOD Review', icon: '🏛️', done: ['HOD Approved','Faculty Assigned','Faculty Accepted','Submitted'].includes(proposal.status), rejected: proposal.status === 'Rejected (HOD)', timestamp: proposal.hodReview?.reviewedAt, note: proposal.hodReview?.comment },
+                          { status: 'Faculty Assigned',   label: 'Faculty Assigned', icon: '👨‍🏫', done: ['Faculty Assigned','Faculty Accepted','Submitted'].includes(proposal.status), timestamp: null, note: proposal.assignedFaculty ? `Assigned: ${proposal.assignedFaculty.name}` : null },
+                          { status: 'Faculty Accepted',   label: 'Faculty Review', icon: '✅', done: ['Faculty Accepted','Submitted'].includes(proposal.status), rejected: proposal.status === 'Rejected (Faculty)', timestamp: proposal.facultyReview?.reviewedAt, note: proposal.facultyReview?.comment },
+                          { status: 'Submitted',          label: 'Final Submitted', icon: '🏁', done: proposal.status === 'Submitted', timestamp: proposal.finalSubmission?.submittedAt, note: null },
+                        ].map((step, i) => (
+                          <div key={i} className={`flex items-start gap-4 p-4 rounded-2xl border ${
+                            step.rejected ? 'bg-red-50 border-red-200' : step.done ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200 opacity-50'
+                          }`}>
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0 border-2 ${
+                              step.rejected ? 'border-red-400 bg-red-100' : step.done ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-white'
+                            }`}>{step.rejected ? '❌' : step.done ? '✓' : step.icon}</div>
+                            <div className="flex-1">
+                              <p className={`font-bold text-sm ${step.rejected ? 'text-red-800' : step.done ? 'text-green-900' : 'text-gray-600'}`}>{step.label}</p>
+                              {step.timestamp && <p className="text-xs text-gray-400 mt-0.5">{new Date(step.timestamp).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</p>}
+                              {step.note && <p className="text-xs mt-1.5 text-gray-600 bg-white px-3 py-1.5 rounded-xl border border-gray-100">{step.note}</p>}
                             </div>
-                            <select className="bg-white border text-xs font-bold px-2 py-1.5 rounded-lg shadow-sm" value={t.status} onChange={e => updateTargetStatus(t._id, e.target.value)}>
-                              <option value="Pending">Pending</option>
-                              <option value="Ongoing">Ongoing</option>
-                              <option value="Completed">Completed</option>
-                            </select>
                           </div>
                         ))}
                       </div>
                     </div>
+
+                    {/* Team Members */}
+                    {proposal.teamMembers?.length > 0 && (
+                      <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                        <h3 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Users className="w-4 h-4 text-indigo-500" /> Team Members ({proposal.teamMembers.length})</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {proposal.teamMembers.map((m, i) => (
+                            <div key={i} className="flex items-center gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                              <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center text-xl font-extrabold text-indigo-700 shrink-0">{m.name?.[0]?.toUpperCase() || '?'}</div>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-bold text-gray-900 truncate">{m.name}</p>
+                                <p className="text-xs text-gray-500 truncate">{m.email}</p>
+                                <div className="flex gap-2 mt-1.5 flex-wrap">
+                                  {m.course && <span className="text-[10px] font-bold bg-white border border-gray-200 text-gray-600 px-2 py-0.5 rounded-md">{m.course}</span>}
+                                  {m.branch && <span className="text-[10px] font-bold bg-blue-50 border border-blue-100 text-blue-700 px-2 py-0.5 rounded-md">{m.branch}</span>}
+                                  {m.section && <span className="text-[10px] font-bold bg-indigo-50 border border-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md">Sec {m.section}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Faculty Feedback */}
+                    {proposal.facultyFeedback?.length > 0 && (
+                      <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                        <h3 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-5 flex items-center gap-2"><MessageSquare className="w-4 h-4 text-indigo-500" /> Supervisor Feedback</h3>
+                        <div className="space-y-3">
+                          {[...proposal.facultyFeedback].reverse().map((f, i) => (
+                            <div key={i} className="flex gap-4 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
+                              <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0">{proposal.assignedFaculty?.name?.[0] || 'F'}</div>
+                              <div>
+                                <p className="text-sm text-gray-800 font-medium leading-relaxed">{f.message}</p>
+                                <p className="text-xs text-gray-400 mt-2">{new Date(f.addedAt).toLocaleString()}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -733,7 +786,7 @@ const StudentDashboard = () => {
                           <form onSubmit={handleFinalSubmit} className="space-y-5">
                             <div>
                               <label className="text-xs font-bold text-gray-700 mb-1.5 block">Live Application Link <span className="text-red-400">*</span></label>
-                              <input required type="url" className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-purple-500" placeholder="https://myproject.vercel.app" value={finalForm.liveLink} onChange={e => setFinalForm({...finalForm, liveLink: e.target.value})} disabled={proposal.status === 'Submitted'}/>
+                              <input required type="url" className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-purple-500" placeholder="https://myproject.vercel.app" value={finalForm.liveLink} onChange={e => setFinalForm({...finalForm, liveLink: e.target.value})} disabled={proposal.status === 'Submitted' && proposal.finalSubmission?.status !== 'Rejected'}/>
                             </div>
                             <div>
                               <label className="text-xs font-bold text-gray-700 mb-1.5 block">GitHub Repository <span className="text-red-400">*</span></label>
@@ -743,9 +796,9 @@ const StudentDashboard = () => {
                               <label className="text-xs font-bold text-gray-700 mb-1.5 block">LinkedIn Showcase (Optional)</label>
                               <input type="url" className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-purple-500" placeholder="https://linkedin.com/post/..." value={finalForm.linkedinLink} onChange={e => setFinalForm({...finalForm, linkedinLink: e.target.value})} disabled={proposal.status === 'Submitted'}/>
                             </div>
-                            {proposal.status !== 'Submitted' && (
+                            {(proposal.status !== 'Submitted' || proposal.finalSubmission?.status === 'Rejected') && (
                               <button type="submit" className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-md transition-all flex justify-center items-center gap-2">
-                                 <Send className="w-4 h-4"/> Submit Links
+                                 <Send className="w-4 h-4"/> {proposal.finalSubmission?.status === 'Rejected' ? 'Re-Submit Links' : 'Submit Links'}
                               </button>
                             )}
                           </form>

@@ -9,15 +9,33 @@ import cloudinary from '../config/cloudinary.js';
 export const getStudentDashboard = async (req, res) => {
   try {
     const proposal = await ProjectProposal.findOne({ studentId: req.user._id })
-      .populate('assignedFaculty', 'name email department');
+      .populate('assignedFaculty', 'name email department designation');
+
+    // Merge: global role-based deadlines + faculty-targeted project deadlines
+    const globalDeadlines = await Deadline.find({
+      isActive: true,
+      $or: [{ targetRoles: 'all' }, { targetRoles: 'student' }]
+    }).sort({ dueDate: 1 });
+
+    let projectDeadlines = [];
+    if (proposal) {
+      projectDeadlines = await Deadline.find({
+        isActive: true,
+        targetProjects: proposal._id
+      }).sort({ dueDate: 1 });
+    }
+
+    // Merge and deduplicate deadlines by _id
+    const seen = new Set();
+    const deadlines = [...globalDeadlines, ...projectDeadlines]
+      .filter(d => { const key = d._id.toString(); if (seen.has(key)) return false; seen.add(key); return true; })
+      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+      .slice(0, 10);
+
     let submissions = [];
     if (proposal) {
       submissions = await FileSubmission.find({ projectId: proposal._id }).sort({ createdAt: -1 });
     }
-    const deadlines = await Deadline.find({
-      isActive: true,
-      $or: [{ targetRoles: 'all' }, { targetRoles: 'student' }]
-    }).sort({ dueDate: 1 }).limit(5);
     const { notifications, unreadCount } = await getNotificationsForUser(req.user._id);
     console.log(`\x1b[36m[STUDENT]\x1b[0m Dashboard loaded for: ${req.user.email}`);
     res.status(200).json({ profile: req.user, proposal, submissions, deadlines, notifications, unreadCount });

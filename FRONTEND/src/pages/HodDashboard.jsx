@@ -400,6 +400,14 @@ export default function HodDashboard() {
                               </div>
                             </div>
                             <p className="text-xs text-gray-500 border-l-4 border-purple-200 pl-3 line-clamp-2">{p.description}</p>
+                            {p.teamMembers?.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase mr-1">Team:</span>
+                                {p.teamMembers.map((m, i) => (
+                                  <span key={i} className="text-xs text-gray-600 bg-gray-50 px-2 py-1 border border-gray-100 rounded-md font-medium">{m.name} ({m.branch})</span>
+                                ))}
+                              </div>
+                            )}
                             {activeModal.type === 'rejectProp' && activeModal.id === p._id && (
                               <div className="flex gap-2 mt-3"><textarea className="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs focus:outline-none resize-none" rows={2} placeholder="Reason (min 20 chars)..." value={reason} onChange={e => setReason(e.target.value)} />
                                 <div className="flex flex-col gap-1"><button onClick={() => setActiveModal({ type: null, id: null })} className="px-3 py-1.5 text-xs bg-gray-100 rounded-lg">Cancel</button><button onClick={() => resolveProposal(p._id, 'reject')} className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg">Reject</button></div>
@@ -429,7 +437,13 @@ export default function HodDashboard() {
                         {data.approvedNeedingAssignment.map(p => (
                           <div key={p._id} className="border border-blue-100 rounded-2xl p-4 border-l-4 border-l-blue-500">
                             <p className="font-bold text-gray-900 text-sm mb-1">{p.title}</p>
-                            <p className="text-xs text-gray-400 mb-3">{p.studentId?.name}</p>
+                            <p className="text-[10px] text-gray-500 font-medium mb-1 line-clamp-2">{p.description}</p>
+                            <div className="flex flex-col gap-1 mb-3">
+                              <p className="text-xs text-gray-800 font-bold bg-gray-50 border-l-2 border-gray-300 pl-2">{p.studentId?.name}</p>
+                              {p.teamMembers?.length > 0 && p.teamMembers.map((m, i) => (
+                                <p key={i} className="text-[10px] text-gray-500 pl-2.5 ml-0.5 border-l border-gray-200">↳ {m.name} ({m.branch})</p>
+                              ))}
+                            </div>
                             <select className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs mb-2 focus:outline-none" defaultValue="" onChange={e => setSelectedFaculty(e.target.value)}>
                               <option value="" disabled>Select Faculty</option>
                               {approvedFacultyList.map(f => <option key={f._id} value={f._id}>{f.name} — {f.department}</option>)}
