@@ -30,10 +30,10 @@ router.put('/projects/:id/submission', updateProjectSubmission);
 
 // Student management
 router.get('/students', getAllStudents);
-router.post('/students/add', upload.single('profilePhoto'), addStudent);
+router.post('/students', upload.single('profilePhoto'), addStudent);
 router.put('/students/:id/ban', toggleStudentBan);
 
-// Add faculty
-router.post('/faculty/add', upload.single('profilePhoto'), addFaculty);
+// Add faculty directly by HOD
+router.post('/faculty', upload.single('profilePhoto'), addFaculty);
 
 export default router;

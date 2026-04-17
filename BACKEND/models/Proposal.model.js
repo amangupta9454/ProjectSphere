@@ -6,6 +6,7 @@ const projectProposalSchema = new mongoose.Schema(
     title: { type: String, required: true, minlength: 10, maxlength: 120 },
     description: { type: String, required: true, minlength: 100, maxlength: 1000 },
     department: { type: String, enum: ['Computer Science', 'Electrical', 'Mechanical Polytechnic', 'BCA', 'BBA', 'MBA', 'MCA', 'B.Ed', 'M.Ed'], required: true },
+    domain: { type: String, trim: true, default: '' },
     teamSize: { type: Number, default: 1 },
     teamMembers: [{
       name: String,

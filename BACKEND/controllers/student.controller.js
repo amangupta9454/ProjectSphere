@@ -35,11 +35,12 @@ const getNotificationsForUser = async (userId) => {
 
 export const submitProposal = async (req, res) => {
   try {
-    const { title, description, teamSize, teamMembers, referenceLinks } = req.body;
+    const { title, description, domain, teamSize, teamMembers, referenceLinks } = req.body;
     const existingProposal = await ProjectProposal.findOne({ studentId: req.user._id });
     if (existingProposal) return res.status(400).json({ message: 'Proposal already exists. You can only update it.' });
     const proposal = await ProjectProposal.create({
-      studentId: req.user._id, title, description, department: req.user.branch,
+      studentId: req.user._id, title, description, domain: domain || '',
+      department: req.user.branch,
       teamSize: teamSize || 1, teamMembers: teamMembers || [],
       referenceLinks: referenceLinks || []
     });
@@ -53,7 +54,7 @@ export const submitProposal = async (req, res) => {
 
 export const updateProposal = async (req, res) => {
   try {
-    const { title, description, teamSize, teamMembers, referenceLinks } = req.body;
+    const { title, description, domain, teamSize, teamMembers, referenceLinks } = req.body;
     const proposal = await ProjectProposal.findOne({ studentId: req.user._id });
     if (!proposal) return res.status(404).json({ message: 'No proposal found' });
     if (!['Rejected (HOD)', 'Rejected (Faculty)'].includes(proposal.status)) {
@@ -61,7 +62,8 @@ export const updateProposal = async (req, res) => {
     }
     proposal.title = title || proposal.title;
     proposal.description = description || proposal.description;
-    proposal.department = req.user.branch; // always enforce strict domain
+    if (domain !== undefined) proposal.domain = domain;
+    proposal.department = req.user.branch; // always enforce strict department
     if (teamSize !== undefined) proposal.teamSize = teamSize;
     if (teamMembers) proposal.teamMembers = teamMembers;
     proposal.referenceLinks = referenceLinks || proposal.referenceLinks;
@@ -157,7 +159,7 @@ export const requestSupervisor = async (req, res) => {
       userId: facultyId,
       userModel: 'Faculty',
       message: `Student ${req.user.name} has requested you as a supervisor for "${proposal.title}".`,
-      type: 'request'
+      type: 'general'
     });
 
     res.status(200).json({ message: 'Supervisor requested successfully.' });

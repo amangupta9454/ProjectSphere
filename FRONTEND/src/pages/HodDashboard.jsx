@@ -61,16 +61,36 @@ export default function HodDashboard() {
 
   const fetchDashboard = useCallback(async () => {
     try {
-      const [dashRes, facRes, notifsRes] = await Promise.all([
+      // Use allSettled so a failure in one call doesn't wipe out all dashboard data
+      const [dashRes, facRes, notifsRes] = await Promise.allSettled([
         api.get('/hod/dashboard'),
         api.get('/hod/faculty/approved'),
         api.get('/notifications'),
       ]);
-      setData(dashRes.data);
-      setApprovedFacultyList(facRes.data);
-      setHodNotifications(notifsRes.data.notifications || []);
+
+      if (dashRes.status === 'fulfilled') {
+        setData(dashRes.value.data);
+      } else {
+        const status = dashRes.reason?.response?.status;
+        if (status === 401 || status === 403) { handleLogout(); return; }
+        console.error('[HOD Dashboard]', dashRes.reason?.response?.data?.message || dashRes.reason?.message);
+        toast.error('Failed to load dashboard data. Check your connection.');
+      }
+
+      if (facRes.status === 'fulfilled') {
+        setApprovedFacultyList(facRes.value.data);
+      } else {
+        console.error('[HOD Faculty List]', facRes.reason?.response?.data?.message || facRes.reason?.message);
+      }
+
+      if (notifsRes.status === 'fulfilled') {
+        setHodNotifications(notifsRes.value.data.notifications || []);
+      } else {
+        console.error('[HOD Notifications]', notifsRes.reason?.response?.data?.message || notifsRes.reason?.message);
+      }
     } catch (e) {
-      if (e.response?.status === 401 || e.response?.status === 403) handleLogout();
+      console.error('[HOD fetchDashboard unexpected]', e.message);
+      toast.error('An unexpected error occurred loading the dashboard.');
     } finally { setLoading(false); }
   }, []);
 

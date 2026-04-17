@@ -7,34 +7,43 @@ import bcrypt from 'bcrypt';
 
 export const getHodDashboard = async (req, res) => {
   try {
-    const unapprovedFaculty = await Faculty.find({ isApproved: false, isEmailVerified: true, department: req.user.department });
-    const pendingProposals = await ProjectProposal.find({ status: 'Pending HOD Review', department: req.user.department })
+    // Guard: HOD must have a department set, otherwise all queries return empty
+    if (!req.user.department) {
+      console.error('\x1b[31m[ERROR]\x1b[0m getHodDashboard: HOD has no department configured:', req.user.email);
+      return res.status(400).json({ message: 'HOD department is not configured. Please contact the administrator.' });
+    }
+
+    const dept = req.user.department;
+    console.log(`\x1b[36m[HOD]\x1b[0m Dashboard fetch for department: "${dept}"`);
+
+    const unapprovedFaculty = await Faculty.find({ isApproved: false, isEmailVerified: true, department: dept });
+    const pendingProposals = await ProjectProposal.find({ status: 'Pending HOD Review', department: dept })
       .populate('studentId', 'name email branch course year section');
     const approvedNeedingAssignment = await ProjectProposal.find({
       status: { $in: ['HOD Approved', 'Rejected (Faculty)'] },
-      department: req.user.department
+      department: dept
     }).populate('studentId', 'name email branch course');
 
     // Class-wise breakdown
-    const students = await Student.find({ branch: req.user.department }).select('name branch year section course email mobileNumber createdAt');
+    const students = await Student.find({ branch: dept }).select('name branch year section course email mobileNumber createdAt');
     const branchStats = students.reduce((acc, s) => {
       acc[s.branch] = (acc[s.branch] || 0) + 1; return acc;
     }, {});
 
     const stats = {
       totalStudents: students.length,
-      totalFaculty: await Faculty.countDocuments({ department: req.user.department }),
-      activeProjects: await ProjectProposal.countDocuments({ status: { $in: ['Faculty Accepted', 'Submitted'] }, department: req.user.department }),
+      totalFaculty: await Faculty.countDocuments({ isApproved: true, department: dept }),
+      activeProjects: await ProjectProposal.countDocuments({ status: { $in: ['Faculty Accepted', 'Submitted'] }, department: dept }),
       pendingReview: pendingProposals.length,
       branchStats,
     };
 
     // Recent activity — last 10 proposals sorted by updatedAt
-    const recentActivity = await ProjectProposal.find({ department: req.user.department })
+    const recentActivity = await ProjectProposal.find({ department: dept })
       .sort({ updatedAt: -1 }).limit(10)
       .populate('studentId', 'name branch');
 
-    console.log(`\x1b[36m[HOD]\x1b[0m Dashboard | Pending: ${pendingProposals.length} | Assign Needed: ${approvedNeedingAssignment.length}`);
+    console.log(`\x1b[36m[HOD]\x1b[0m Dashboard | Dept: ${dept} | Pending Faculty: ${unapprovedFaculty.length} | Pending Props: ${pendingProposals.length} | Assign Needed: ${approvedNeedingAssignment.length} | Students: ${students.length}`);
     res.status(200).json({ profile: req.user, unapprovedFaculty, pendingProposals, approvedNeedingAssignment, stats, recentActivity });
   } catch (error) {
     console.error('\x1b[31m[ERROR]\x1b[0m getHodDashboard:', error.message);

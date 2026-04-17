@@ -51,7 +51,7 @@ const StudentDashboard = () => {
   const [announcements, setAnnouncements] = useState([]);
 
   // Tab 2: Proposal
-  const [proposalForm, setProposalForm] = useState({ title: '', description: '', teamSize: 1, teamMembers: [], referenceLinks: '' });
+  const [proposalForm, setProposalForm] = useState({ title: '', description: '', domain: '', teamSize: 1, teamMembers: [], referenceLinks: '' });
   const [submitting, setSubmitting] = useState(false);
   
   // Tab 3: Supervisor
@@ -92,7 +92,8 @@ const StudentDashboard = () => {
         const p = dashRes.data.proposal;
         setProposalForm({ 
           title: p.title || '', 
-          description: p.description || '', 
+          description: p.description || '',
+          domain: p.domain || '',
           teamSize: p.teamSize || 1,
           teamMembers: p.teamMembers || [],
           referenceLinks: (p.referenceLinks || []).join(', ') 
@@ -144,6 +145,7 @@ const StudentDashboard = () => {
       const payload = {
         title: proposalForm.title,
         description: proposalForm.description,
+        domain: proposalForm.domain,
         teamSize: proposalForm.teamSize,
         teamMembers: proposalForm.teamMembers,
         referenceLinks: proposalForm.referenceLinks ? proposalForm.referenceLinks.split(',').map(l => l.trim()).filter(Boolean) : []
@@ -497,6 +499,14 @@ const StudentDashboard = () => {
                         </div>
                         <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-medium">
                           🏫 Your proposal will be routed to the <strong>{data.profile?.branch || 'your'}</strong> department HOD automatically.
+                        </div>
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-1.5 block">Project Domain / Technology Area <span className="text-red-400">*</span></label>
+                          <input required
+                            className="w-full bg-gray-50/50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all text-sm font-medium"
+                            placeholder="e.g. Machine Learning, Web Development, IoT, Data Science..."
+                            value={proposalForm.domain}
+                            onChange={e => setProposalForm({ ...proposalForm, domain: e.target.value })} />
                         </div>
                         <div>
                           <label className="text-sm font-bold text-gray-700 mb-1.5 block">Project Description <span className="text-red-400">*</span></label>
