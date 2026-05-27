@@ -43,8 +43,19 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // ── Database ─────────────────────────────────────────────────
-// connectDB is safe to call multiple times — Mongoose caches the connection
-connectDB();
+// Middleware to ensure DB connection is fully established before processing requests (critical for Vercel/serverless)
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('\x1b[31m[DATABASE ERROR]\x1b[0m:', err.message);
+    res.status(500).json({
+      message: 'Database connection failed. Please check your connection string and MongoDB Atlas IP Whitelist (0.0.0.0/0).',
+      error: err.message
+    });
+  }
+});
 
 // ── Routes ───────────────────────────────────────────────────
 import authRoutes             from './routes/auth.routes.js';
