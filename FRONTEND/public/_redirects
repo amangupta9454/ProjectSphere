@@ -1,0 +1,5 @@
+# Proxy /api/* to the backend
+/api/*  https://project-sphere-phi.vercel.app/api/:splat  200
+
+# SPA fallback — client-side routing
+/*  /index.html  200

@@ -9,30 +9,33 @@ import {
   Users, Target, Send, Plus, Trash2, Search, CheckSquare, Megaphone, Pin
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../lib/api.js';
+import api, { studentAPI } from '../lib/api.js';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 import Sidebar from '../Components/Sidebar';
+import DeadlinePopup from '../Components/DeadlinePopup';
+import ProjectTimeline from '../Components/ProjectTimeline';
 
 const TABS = [
-  { id: 'overview',      label: 'Dashboard',        icon: LayoutDashboard },
-  { id: 'proposal',      label: 'Submit Proposal',   icon: BookOpen },
-  { id: 'supervisor',    label: 'Supervisor',        icon: Users },
-  { id: 'details',       label: 'Project Details',   icon: Target },
-// Tab rename handled via label below
-  { id: 'submission',    label: 'Submission & Files', icon: Send },
-  { id: 'announcements', label: 'Announcements',     icon: Megaphone },
-  { id: 'profile',       label: 'My Profile',        icon: User },
+  { id: 'overview',      label: 'Dashboard',         icon: LayoutDashboard },
+  { id: 'proposal',      label: 'Submit Proposal',    icon: BookOpen },
+  { id: 'supervisor',    label: 'Supervisor',         icon: Users },
+  { id: 'details',       label: 'Project Details',    icon: Target },
+  { id: 'timeline',      label: 'Project Timeline',   icon: TrendingUp },
+  { id: 'submission',    label: 'Submission & Files',  icon: Send },
+  { id: 'announcements', label: 'Announcements',      icon: Megaphone },
+  { id: 'profile',       label: 'My Profile',         icon: User },
 ];
 
 
 const STATUS_META = {
-  'Pending HOD Review': { color: 'yellow', label: 'Pending HOD Review', step: 1 },
-  'HOD Approved': { color: 'blue', label: 'HOD Approved', step: 2 },
-  'Rejected (HOD)': { color: 'red', label: 'Rejected by HOD', step: 1 },
-  'Faculty Assigned': { color: 'indigo', label: 'Faculty Assigned', step: 3 },
-  'Faculty Accepted': { color: 'green', label: 'Faculty Accepted ✓', step: 4 },
-  'Rejected (Faculty)': { color: 'orange', label: 'Rejected by Faculty', step: 3 },
-  'Submitted': { color: 'purple', label: 'Project Submitted', step: 5 },
+  'Pending HOD Review':         { color: 'yellow',  label: 'Pending HOD Review', step: 1 },
+  'HOD Approved':               { color: 'blue',    label: 'HOD Approved', step: 2 },
+  'Pending Faculty Assignment': { color: 'indigo',  label: 'Pending Faculty Assignment', step: 2 },
+  'Rejected (HOD)':             { color: 'red',     label: 'Rejected by HOD', step: 1 },
+  'Faculty Assigned':           { color: 'indigo',  label: 'Faculty Assigned', step: 3 },
+  'Faculty Accepted':           { color: 'green',   label: 'Faculty Accepted ✓', step: 4 },
+  'Rejected (Faculty)':         { color: 'orange',  label: 'Rejected by Faculty', step: 3 },
+  'Submitted':                  { color: 'purple',  label: 'Project Submitted', step: 5 },
 };
 
 const FILE_TYPES = [
@@ -70,6 +73,20 @@ const StudentDashboard = () => {
   const [resumeFile, setResumeFile] = useState(null);
   const [updatingProfile, setUpdatingProfile] = useState(false);
   const resumeRef = useRef(null);
+
+  // Timeline
+  const [timeline, setTimeline] = useState([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+
+  // Extension Requests
+  const [extensionRequests, setExtensionRequests] = useState([]);
+  const [showExtensionForm, setShowExtensionForm] = useState(false);
+  const [extensionForm, setExtensionForm] = useState({ deadlineId: '', requestedDate: '', reason: '' });
+  const [extensionDoc, setExtensionDoc] = useState(null);
+  const [submittingExtension, setSubmittingExtension] = useState(false);
+
+  // Deadline popup
+  const [showDeadlinePopup, setShowDeadlinePopup] = useState(true);
 
   const [uploading, setUploading] = useState(false);
   const [selectedFileType, setSelectedFileType] = useState('document');
@@ -114,6 +131,74 @@ const StudentDashboard = () => {
   }, []);
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+
+  // Load timeline separately
+  const fetchTimeline = useCallback(async () => {
+    setTimelineLoading(true);
+    try {
+      const res = await studentAPI.getTimeline();
+      setTimeline(res.data.timeline || []);
+    } catch (_) {}
+    finally { setTimelineLoading(false); }
+  }, []);
+
+  // Load extension requests
+  const fetchExtensions = useCallback(async () => {
+    try {
+      const res = await studentAPI.getMyExtensionRequests();
+      setExtensionRequests(res.data || []);
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    fetchTimeline();
+    fetchExtensions();
+  }, [fetchTimeline, fetchExtensions]);
+
+  const handleAddTimelineEntry = async ({ milestoneStatus, remarks }) => {
+    try {
+      const res = await studentAPI.addTimelineEntry({ milestoneStatus, remarks });
+      setTimeline(res.data.timeline || []);
+      toast.success('Milestone logged!');
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to add milestone.');
+    }
+  };
+
+  const handleAddTimelineComment = async (entryId, message) => {
+    try {
+      const res = await studentAPI.addTimelineComment(entryId, message);
+      setTimeline(res.data.timeline || []);
+      toast.success('Comment added!');
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to add comment.');
+    }
+  };
+
+  const handleRequestExtension = async (e) => {
+    e.preventDefault();
+    if (!extensionForm.deadlineId || !extensionForm.requestedDate || !extensionForm.reason) {
+      toast.error('Please fill all fields.');
+      return;
+    }
+    setSubmittingExtension(true);
+    try {
+      const formData = new FormData();
+      formData.append('deadlineId', extensionForm.deadlineId);
+      formData.append('requestedDate', extensionForm.requestedDate);
+      formData.append('reason', extensionForm.reason);
+      if (extensionDoc) formData.append('document', extensionDoc);
+      await studentAPI.requestExtension(formData);
+      toast.success('Extension request submitted!');
+      setShowExtensionForm(false);
+      setExtensionForm({ deadlineId: '', requestedDate: '', reason: '' });
+      setExtensionDoc(null);
+      fetchExtensions();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to submit request.');
+    }
+    setSubmittingExtension(false);
+  };
 
   // Tab 2: Form Handling
   const handleTeamSizeChange = (e) => {
@@ -279,6 +364,14 @@ const StudentDashboard = () => {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans">
+      {/* Smart Deadline Popup */}
+      {showDeadlinePopup && data.deadlines?.length > 0 && (
+        <DeadlinePopup
+          deadlines={data.deadlines}
+          onDismiss={() => setShowDeadlinePopup(false)}
+        />
+      )}
+
       <Sidebar
         navItems={TABS}
         user={data.profile}
@@ -958,7 +1051,98 @@ const StudentDashboard = () => {
            </motion.div>
          )}
 
+         {/* ═══════════════════════ TIMELINE ═══════════════════════ */}
+         {activeTab === 'timeline' && (
+           <motion.div key="timeline" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+             className="max-w-3xl mx-auto space-y-8">
+             {timelineLoading ? (
+               <div className="flex items-center justify-center h-40"><div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent"/></div>
+             ) : (
+               <ProjectTimeline
+                 timeline={timeline}
+                 projectStatus={data.proposal?.status}
+                 onAddEntry={handleAddTimelineEntry}
+                 onAddComment={handleAddTimelineComment}
+                 currentUserName={data.profile?.name}
+                 isStudent={true}
+               />
+             )}
+
+             {/* Deadline Extension Request Section */}
+             <div style={{ background: 'rgba(30,30,50,0.7)', borderRadius: '20px', padding: '28px', border: '1px solid rgba(255,255,255,0.08)' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                 <h3 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '18px' }}>📋 Deadline Extension Requests</h3>
+                 <button
+                   onClick={() => setShowExtensionForm(p => !p)}
+                   style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', color: '#1a1a2e', border: 'none', borderRadius: '10px', padding: '8px 16px', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}
+                 >
+                   {showExtensionForm ? 'Cancel' : '+ Request Extension'}
+                 </button>
+               </div>
+
+               {showExtensionForm && (
+                 <form onSubmit={handleRequestExtension} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '14px', padding: '20px', marginBottom: '20px', border: '1px solid rgba(245,158,11,0.3)' }}>
+                   <div style={{ display: 'grid', gap: '14px' }}>
+                     <div>
+                       <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Select Deadline *</label>
+                       <select value={extensionForm.deadlineId} onChange={e => setExtensionForm(p => ({...p, deadlineId: e.target.value}))}
+                         style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', color: '#f1f5f9', fontSize: '14px', marginTop: '6px' }} required>
+                         <option value="">Choose a deadline...</option>
+                         {(data.deadlines || []).map(d => (
+                           <option key={d._id} value={d._id}>{d.title} — {new Date(d.dueDate).toLocaleDateString()}</option>
+                         ))}
+                       </select>
+                     </div>
+                     <div>
+                       <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Requested New Date *</label>
+                       <input type="date" value={extensionForm.requestedDate} min={new Date().toISOString().split('T')[0]}
+                         onChange={e => setExtensionForm(p => ({...p, requestedDate: e.target.value}))}
+                         style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', color: '#f1f5f9', fontSize: '14px', marginTop: '6px' }} required/>
+                     </div>
+                     <div>
+                       <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Reason (min. 20 chars) *</label>
+                       <textarea value={extensionForm.reason} onChange={e => setExtensionForm(p => ({...p, reason: e.target.value}))}
+                         rows={3} placeholder="Explain why you need an extension..."
+                         style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', color: '#f1f5f9', fontSize: '14px', marginTop: '6px', resize: 'vertical', fontFamily: 'inherit' }} required/>
+                     </div>
+                     <div>
+                       <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Supporting Document (optional)</label>
+                       <input type="file" accept=".pdf,.doc,.docx,.jpg,.png" onChange={e => setExtensionDoc(e.target.files[0])}
+                         style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px', color: '#94a3b8', fontSize: '13px', marginTop: '6px' }}/>
+                     </div>
+                     <button type="submit" disabled={submittingExtension}
+                       style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', color: '#1a1a2e', border: 'none', borderRadius: '10px', padding: '12px', fontWeight: 700, cursor: 'pointer', fontSize: '14px', opacity: submittingExtension ? 0.6 : 1 }}>
+                       {submittingExtension ? 'Submitting...' : 'Submit Request'}
+                     </button>
+                   </div>
+                 </form>
+               )}
+
+               {extensionRequests.length === 0 ? (
+                 <p style={{ color: '#64748b', fontSize: '14px', textAlign: 'center', padding: '24px 0' }}>No extension requests yet.</p>
+               ) : (
+                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                   {extensionRequests.map(req => (
+                     <div key={req._id} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                       <div>
+                         <p style={{ color: '#c4b5fd', fontWeight: 700, fontSize: '14px' }}>{req.deadlineId?.title || 'Deadline'}</p>
+                         <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>Requested: {new Date(req.requestedDate).toLocaleDateString()}</p>
+                         <p style={{ color: '#94a3b8', fontSize: '12px' }}>Reason: {req.reason.substring(0, 80)}...</p>
+                         {req.remarks && <p style={{ color: '#fbbf24', fontSize: '12px', marginTop: '4px' }}>Remark: {req.remarks}</p>}
+                       </div>
+                       <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, background: req.status === 'Approved' ? 'rgba(34,197,94,0.2)' : req.status === 'Rejected' ? 'rgba(239,68,68,0.2)' : 'rgba(251,191,36,0.2)', color: req.status === 'Approved' ? '#4ade80' : req.status === 'Rejected' ? '#f87171' : '#fbbf24', flexShrink: 0 }}>
+                         {req.status}
+                       </span>
+                     </div>
+                   ))}
+                 </div>
+               )}
+             </div>
+           </motion.div>
+         )}
+
          {/* ═══════════════════════ ANNOUNCEMENTS (Read-Only) ═══════════════════════ */}
+
          {activeTab === 'announcements' && (
            <motion.div key="announcements" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
              className="max-w-3xl mx-auto" onViewportEnter={() => {

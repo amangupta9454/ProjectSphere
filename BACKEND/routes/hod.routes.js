@@ -1,39 +1,47 @@
 import express from 'express';
 import { protect, authorizeRoles } from '../middleware/auth.middleware.js';
-import {
-  getHodDashboard, approveFaculty, rejectFaculty, getApprovedFacultyList,
-  approveProposal, rejectProposal, assignFacultyToProposal,
-  getAllProjects, getAllStudents, getFacultyWorkload,
-  addStudent, addFaculty, toggleStudentBan, exportProjectsExcel, updateProjectSubmission
-} from '../controllers/hod.controller.js';
 import { upload } from '../middleware/upload.middleware.js';
+import {
+  getHodDashboard, getAllProjects, getAllStudents, getFacultyWorkload,
+  getApprovedFacultyList, approveFaculty, rejectFaculty,
+  approveProposal, rejectProposal, assignFacultyToProposal,
+  addStudent, addFaculty, toggleStudentBan, exportProjectsExcel,
+  updateProjectSubmission, addTimelineComment, getExtensionRequests,
+  reviewExtensionRequest
+} from '../controllers/hod.controller.js';
 
 const router = express.Router();
 router.use(protect);
-router.use(authorizeRoles('hod', 'admin'));
+router.use(authorizeRoles('hod'));
 
+// Dashboard
 router.get('/dashboard', getHodDashboard);
 
-// Faculty management
-router.put('/faculty/:id/approve', approveFaculty);
-router.put('/faculty/:id/reject', rejectFaculty);
-router.get('/faculty/approved', getApprovedFacultyList);
-router.get('/faculty/workload', getFacultyWorkload);
-
-// Project management
-router.put('/proposals/:id/approve', approveProposal);
-router.put('/proposals/:id/reject', rejectProposal);
-router.put('/proposals/:id/assign', assignFacultyToProposal);
-router.get('/projects', getAllProjects);
-router.get('/projects/export', exportProjectsExcel);
+// Projects
+router.get('/projects',                getAllProjects);
+router.get('/projects/export',         exportProjectsExcel);
 router.put('/projects/:id/submission', updateProjectSubmission);
+router.put('/proposals/:id/approve',   approveProposal);
+router.put('/proposals/:id/reject',    rejectProposal);
+router.put('/proposals/:id/assign',    assignFacultyToProposal);
 
-// Student management
-router.get('/students', getAllStudents);
-router.post('/students', upload.single('profilePhoto'), addStudent);
-router.put('/students/:id/ban', toggleStudentBan);
+// Timeline comment by HOD
+router.post('/proposals/:proposalId/timeline/:entryId/comment', addTimelineComment);
 
-// Add faculty directly by HOD
+// Faculty
+router.get('/faculty/workload',        getFacultyWorkload);
+router.get('/faculty/approved',        getApprovedFacultyList);
+router.put('/faculty/:id/approve',     approveFaculty);
+router.put('/faculty/:id/reject',      rejectFaculty);
 router.post('/faculty', upload.single('profilePhoto'), addFaculty);
+
+// Students
+router.get('/students',                getAllStudents);
+router.post('/students', upload.single('profilePhoto'), addStudent);
+router.put('/students/:id/ban',        toggleStudentBan);
+
+// Extension Requests
+router.get('/extensions',              getExtensionRequests);
+router.put('/extensions/:id/review',   reviewExtensionRequest);
 
 export default router;

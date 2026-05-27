@@ -4,6 +4,7 @@ import { Faculty } from '../models/Faculty.model.js';
 import { FileSubmission } from '../models/File.model.js';
 import { Deadline } from '../models/Deadline.model.js';
 import { Notification } from '../models/Notification.model.js';
+import { DeadlineExtensionRequest } from '../models/DeadlineExtensionRequest.model.js';
 import cloudinary from '../config/cloudinary.js';
 
 export const getStudentDashboard = async (req, res) => {
@@ -144,10 +145,16 @@ export const getAvailableFaculty = async (req, res) => {
         assignedFaculty: f._id,
         status: { $in: ['Faculty Assigned', 'Faculty Accepted', 'Submitted'] }
       });
+      // Count student heads: leader (1) + team members
+      const activeProjects = await ProjectProposal.find({ assignedFaculty: f._id, status: { $in: ['Faculty Assigned', 'Faculty Accepted', 'Submitted'] } }).select('teamMembers');
+      const studentHeadCount = activeProjects.reduce((sum, p) => sum + 1 + (p.teamMembers?.length || 0), 0);
+      const maxCap = f.maxStudents || 60;
       return {
         ...f.toObject(),
         activeProjectsCount,
-        isAvailable: activeProjectsCount < (f.maxStudents || 5)
+        studentHeadCount,
+        isAvailable: studentHeadCount < maxCap,
+        maxStudents: maxCap
       };
     }));
 
@@ -286,6 +293,125 @@ export const updateStudentProfile = async (req, res) => {
     res.status(200).json({ message: 'Profile updated successfully', profile: student });
   } catch (error) {
     console.error('\x1b[31m[ERROR]\x1b[0m updateStudentProfile:', error.message);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ── addTimelineEntry (student logs a project milestone) ─────────────────────
+export const addTimelineEntry = async (req, res) => {
+  try {
+    const { milestoneStatus, remarks } = req.body;
+    const validStatuses = ['PROJECT STARTED', 'PROTOTYPE CREATED', 'PROJECT COMPLETE', 'REPORT PREPARED', 'PROJECT SUBMITTED'];
+    if (!validStatuses.includes(milestoneStatus)) return res.status(400).json({ message: 'Invalid milestone status.' });
+
+    const proposal = await ProjectProposal.findOne({ studentId: req.user._id });
+    if (!proposal) return res.status(404).json({ message: 'No proposal found.' });
+    if (!['Faculty Accepted', 'Submitted', 'Faculty Assigned'].includes(proposal.status)) {
+      return res.status(400).json({ message: 'Timeline updates are available after faculty accepts your project.' });
+    }
+
+    proposal.timeline.push({ milestoneStatus, remarks: remarks || '', timestamp: new Date() });
+    await proposal.save();
+
+    // Notify faculty and HOD
+    if (proposal.assignedFaculty) {
+      await Notification.create({ userId: proposal.assignedFaculty, userModel: 'Faculty', message: `${req.user.name} updated project milestone to "${milestoneStatus}" on "${proposal.title}".`, type: 'general' });
+    }
+
+    res.status(201).json({ message: 'Timeline entry added', timeline: proposal.timeline });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ── addTimelineComment (student can comment on their own timeline entries) ────
+export const addTimelineComment = async (req, res) => {
+  try {
+    const { message } = req.body;
+    const { entryId } = req.params;
+    if (!message || message.trim().length < 2) return res.status(400).json({ message: 'Comment too short.' });
+
+    const proposal = await ProjectProposal.findOne({ studentId: req.user._id });
+    if (!proposal) return res.status(404).json({ message: 'No proposal found.' });
+
+    const entry = proposal.timeline.id(entryId);
+    if (!entry) return res.status(404).json({ message: 'Timeline entry not found.' });
+
+    entry.comments.push({
+      message: message.trim(),
+      addedBy: req.user._id,
+      addedModel: 'Student',
+      addedByName: req.user.name,
+    });
+    await proposal.save();
+    res.status(201).json({ message: 'Comment added', timeline: proposal.timeline });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ── getTimeline (get timeline for student's proposal) ─────────────────────────
+export const getTimeline = async (req, res) => {
+  try {
+    const proposal = await ProjectProposal.findOne({ studentId: req.user._id }).select('timeline title status');
+    if (!proposal) return res.status(404).json({ message: 'No proposal found.' });
+    res.status(200).json({ timeline: proposal.timeline, projectTitle: proposal.title, projectStatus: proposal.status });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ── requestDeadlineExtension ─────────────────────────────────────────────────
+export const requestDeadlineExtension = async (req, res) => {
+  try {
+    const { deadlineId, requestedDate, reason } = req.body;
+    if (!reason || reason.length < 20) return res.status(400).json({ message: 'Reason must be at least 20 characters.' });
+
+    const proposal = await ProjectProposal.findOne({ studentId: req.user._id });
+    if (!proposal) return res.status(404).json({ message: 'No proposal found.' });
+
+    const deadline = await Deadline.findById(deadlineId);
+    if (!deadline) return res.status(404).json({ message: 'Deadline not found.' });
+
+    // Check for duplicate pending request
+    const existing = await DeadlineExtensionRequest.findOne({ studentId: req.user._id, deadlineId, status: 'Pending' });
+    if (existing) return res.status(400).json({ message: 'You already have a pending extension request for this deadline.' });
+
+    let documentUrl = '';
+    let documentPublicId = '';
+    if (req.file) {
+      documentUrl = req.file.path;
+      documentPublicId = req.file.filename;
+    }
+
+    const request = await DeadlineExtensionRequest.create({
+      projectId: proposal._id,
+      studentId: req.user._id,
+      deadlineId,
+      requestedDate,
+      reason,
+      documentUrl,
+      documentPublicId,
+    });
+
+    // Notify faculty if assigned
+    if (proposal.assignedFaculty) {
+      await Notification.create({ userId: proposal.assignedFaculty, userModel: 'Faculty', message: `${req.user.name} requested a deadline extension for "${deadline.title}". Review it in your dashboard.`, type: 'deadline' });
+    }
+
+    res.status(201).json({ message: 'Extension request submitted successfully.', request });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ── getMyExtensionRequests ────────────────────────────────────────────────────
+export const getMyExtensionRequests = async (req, res) => {
+  try {
+    const requests = await DeadlineExtensionRequest.find({ studentId: req.user._id })
+      .populate('deadlineId', 'title dueDate').sort({ createdAt: -1 });
+    res.status(200).json(requests);
+  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };

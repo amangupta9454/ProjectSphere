@@ -8,29 +8,31 @@ import {
   TrendingUp, BookOpen, AlertCircle, MessageSquare, Megaphone, Pin, PinOff, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../lib/api.js';
+import api, { hodAPI } from '../lib/api.js';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import Sidebar from '../Components/Sidebar';
 
-const HOD_NAV = (pendingFac, pendingProps, notifications) => [
+const HOD_NAV = (pendingFac, pendingProps, notifications, pendingAssignment) => [
   { id: 'overview',      label: 'Overview',        icon: LayoutDashboard },
   { id: 'projects',      label: 'Projects',         icon: FolderOpen,  badge: 0 },
   { id: 'students',      label: 'Students',         icon: Users },
   { id: 'faculty',       label: 'Faculty',          icon: UserCheck,   badge: pendingFac },
   { id: 'deadlines',     label: 'Deadlines',        icon: Clock },
+  { id: 'extensions',    label: 'Extensions',       icon: Calendar,    badge: 0 },
   { id: 'activity',      label: 'Activity Log',     icon: TrendingUp },
   { id: 'announcements', label: 'Announcements',    icon: Megaphone },
   { id: 'notifications', label: 'Notifications',    icon: Bell,        badge: notifications },
 ];
 
 const STATUS_COLORS = {
-  'Pending HOD Review':  'bg-yellow-50 text-yellow-700 border-yellow-200',
-  'HOD Approved':        'bg-blue-50 text-blue-700 border-blue-200',
-  'Rejected (HOD)':      'bg-red-50 text-red-600 border-red-200',
-  'Faculty Assigned':    'bg-indigo-50 text-indigo-700 border-indigo-200',
-  'Faculty Accepted':    'bg-green-50 text-green-700 border-green-200',
-  'Rejected (Faculty)':  'bg-orange-50 text-orange-600 border-orange-200',
-  'Submitted':           'bg-purple-50 text-purple-700 border-purple-200',
+  'Pending HOD Review':         'bg-yellow-50 text-yellow-700 border-yellow-200',
+  'HOD Approved':               'bg-blue-50 text-blue-700 border-blue-200',
+  'Pending Faculty Assignment': 'bg-violet-50 text-violet-700 border-violet-200',
+  'Rejected (HOD)':             'bg-red-50 text-red-600 border-red-200',
+  'Faculty Assigned':           'bg-indigo-50 text-indigo-700 border-indigo-200',
+  'Faculty Accepted':           'bg-green-50 text-green-700 border-green-200',
+  'Rejected (Faculty)':         'bg-orange-50 text-orange-600 border-orange-200',
+  'Submitted':                  'bg-purple-50 text-purple-700 border-purple-200',
 };
 
 export default function HodDashboard() {
@@ -55,6 +57,14 @@ export default function HodDashboard() {
   const [annForm, setAnnForm]                 = useState({ title: '', content: '', targetAudience: 'all', pinned: false });
   const [showAnnForm, setShowAnnForm]         = useState(false);
   const [annSubmitting, setAnnSubmitting]     = useState(false);
+
+  // Extension Requests
+  const [extensionRequests, setExtensionRequests] = useState([]);
+  const [loadingExtensions, setLoadingExtensions] = useState(false);
+
+  // Skip Faculty Assignment (Approve then assign later)
+  const [skipFacultyAssignment, setSkipFacultyAssignment] = useState(false);
+
   const navigate = useNavigate();
 
   const handleLogout = () => { localStorage.removeItem('user'); navigate('/login'); };
@@ -138,28 +148,53 @@ export default function HodDashboard() {
   const resolveProposal = async (id, action) => {
     try {
       if (action === 'approve') {
-        await api.put(`/hod/proposals/${id}/approve`);
-        toast.success('Proposal approved! Now assign a faculty supervisor.');
-        // Immediately transition to the assign-faculty modal for this proposal
-        setSelectedFaculty('');
-        setActiveModal({ type: 'assignFac', id });
+        if (skipFacultyAssignment) {
+          // Approve and mark as Pending Faculty Assignment (skip assigning now)
+          await hodAPI.approveProposal(id, { skipFacultyAssignment: true });
+          toast.success('Proposal approved! Faculty will be assigned later.');
+          setActiveModal({ type: null, id: null });
+          setSkipFacultyAssignment(false);
+        } else {
+          await hodAPI.approveProposal(id, {});
+          toast.success('Proposal approved! Now assign a faculty supervisor.');
+          setSelectedFaculty('');
+          setActiveModal({ type: 'assignFac', id });
+        }
       } else {
         if (reason.length < 20) return toast.error('Reason must be >20 chars');
-        await api.put(`/hod/proposals/${id}/reject`, { reason }); toast.success('Proposal rejected');
+        await hodAPI.rejectProposal(id, reason);
+        toast.success('Proposal rejected');
         setActiveModal({ type: null, id: null }); setReason('');
       }
       fetchDashboard(); if (activeTab === 'projects') fetchProjects();
-    } catch { toast.error('Action failed'); }
+    } catch (e) { toast.error(e.response?.data?.message || 'Action failed'); }
   };
 
   const assignFaculty = async (id) => {
     if (!selectedFaculty) return toast.error('Select a faculty member');
     try {
-      await api.put(`/hod/proposals/${id}/assign`, { facultyId: selectedFaculty });
-      toast.success('Faculty assigned!');
+      await hodAPI.assignFaculty(id, selectedFaculty);
+      toast.success('Faculty assigned successfully!');
       setActiveModal({ type: null, id: null }); setSelectedFaculty('');
       fetchDashboard(); if (activeTab === 'projects') fetchProjects();
-    } catch (e) { toast.error(e.response?.data?.message || 'Assignment failed'); }
+    } catch (e) { toast.error(e.response?.data?.message || 'Assignment failed — capacity may be exceeded'); }
+  };
+
+  const fetchExtensions = useCallback(async () => {
+    setLoadingExtensions(true);
+    try {
+      const res = await hodAPI.getExtensions();
+      setExtensionRequests(res.data || []);
+    } catch (_) {}
+    finally { setLoadingExtensions(false); }
+  }, []);
+
+  const handleReviewExtension = async (id, status, remarks = '') => {
+    try {
+      await hodAPI.reviewExtension(id, { status, remarks });
+      toast.success(`Extension request ${status.toLowerCase()}!`);
+      fetchExtensions();
+    } catch (e) { toast.error(e.response?.data?.message || 'Action failed'); }
   };
 
   const evaluateFinalSubmission = async (id, status) => {
@@ -343,7 +378,7 @@ export default function HodDashboard() {
                     {facultyWorkload.length === 0 ? <p className="text-sm text-gray-400 italic">No faculty data available to graph.</p> : (
                       <div className="h-64 w-full mt-4">
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={facultyWorkload.map(f => ({ name: f.name.split(' ')[0], Assigned: f.projectCount, Capacity: 10 }))} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                          <BarChart data={facultyWorkload.map(f => ({ name: f.name.split(' ')[0], Students: f.studentCount || 0, Capacity: f.maxStudents || 60 }))} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                             <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} />
                             <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} domain={[0, 10]} />
@@ -394,8 +429,14 @@ export default function HodDashboard() {
                                 <p className="text-xs text-gray-500 mt-0.5">{p.studentId?.name} • {p.studentId?.course} {p.studentId?.branch} <span className="ml-2 bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full border border-purple-100 text-[10px]">{p.domain}</span></p>
                               </div>
                               <div className="flex gap-2 shrink-0">
-                                <button onClick={() => resolveProposal(p._id, 'approve')} className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold">Approve</button>
-                                <button onClick={() => setActiveModal({ type: 'assignFac', id: p._id })} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1"><CornerDownRight className="w-3 h-3" /> Assign</button>
+                                <button onClick={() => resolveProposal(p._id, 'approve')} className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold">
+                                  {skipFacultyAssignment ? 'Approve (Skip Faculty)' : 'Approve'}
+                                </button>
+                                <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-gray-500">
+                                  <input type="checkbox" checked={skipFacultyAssignment} onChange={e => setSkipFacultyAssignment(e.target.checked)} className="rounded" />
+                                  Assign faculty later
+                                </label>
+                                <button onClick={() => setActiveModal({ type: 'assignFac', id: p._id })} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1"><CornerDownRight className="w-3 h-3" /> Assign Now</button>
                                 <button onClick={() => setActiveModal({ type: 'rejectProp', id: p._id })} className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold"><XCircle className="w-3.5 h-3.5" /></button>
                               </div>
                             </div>
@@ -414,13 +455,19 @@ export default function HodDashboard() {
                               </div>
                             )}
                             {activeModal.type === 'assignFac' && activeModal.id === p._id && (
-                              <div className="flex gap-2 mt-3">
+                              <div className="flex flex-col gap-2 mt-3">
                                 <select className="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs focus:outline-none focus:border-blue-500" value={selectedFaculty} onChange={e => setSelectedFaculty(e.target.value)}>
-                                  <option value="">Select Faculty</option>
-                                  {approvedFacultyList.map(f => <option key={f._id} value={f._id}>{f.name} ({f.department})</option>)}
+                                  <option value="">Select Faculty Supervisor</option>
+                                  {approvedFacultyList.map(f => (
+                                    <option key={f._id} value={f._id} disabled={!f.available}>
+                                      {f.name} ({f.department}) — {f.studentCount || 0}/{f.maxStudents || 60} students {!f.available ? '⚠️ FULL' : '✓'}
+                                    </option>
+                                  ))}
                                 </select>
-                                <button onClick={() => setActiveModal({ type: null, id: null })} className="px-3 py-1.5 text-xs bg-gray-100 rounded-lg">Cancel</button>
-                                <button onClick={() => assignFaculty(p._id)} className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-bold">Assign</button>
+                                <div className="flex gap-2">
+                                  <button onClick={() => setActiveModal({ type: null, id: null })} className="px-3 py-1.5 text-xs bg-gray-100 rounded-lg">Cancel</button>
+                                  <button onClick={() => assignFaculty(p._id)} className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-bold">Assign</button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -596,15 +643,22 @@ export default function HodDashboard() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {facultyWorkload.map(f => {
-                      const pct = Math.min(Math.round((f.projectCount/10)*100), 100);
+                      const maxCap = f.maxStudents || 60;
+                      const pct = Math.min(Math.round(((f.studentCount || 0)/maxCap)*100), 100);
+                      const statusColor = pct >= 90 ? 'bg-red-50 text-red-600 border-red-200' : pct >= 60 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-green-50 text-green-600 border-green-200';
                       return (
                         <div key={f._id} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
                           <div className="flex items-start justify-between mb-3">
                             <div><p className="font-bold text-gray-900">{f.name}</p><p className="text-xs text-gray-500">{f.department}</p><p className="text-xs text-gray-400">{f.email}</p></div>
-                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${pct > 80 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-600 border-green-200'}`}>{f.projectCount}/10</span>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${statusColor}`}>{f.studentCount || 0}/{maxCap} students</span>
                           </div>
-                          <div className="w-full bg-gray-100 rounded-full h-2"><div className={`h-2 rounded-full transition-all ${pct>80?'bg-red-500':'bg-gradient-to-r from-blue-500 to-indigo-500'}`} style={{ width:`${pct}%` }}></div></div>
-                          <p className="text-xs text-gray-400 mt-1">{pct}% workload</p>
+                          <div className="w-full bg-gray-100 rounded-full h-2">
+                            <div className={`h-2 rounded-full transition-all ${pct>=90?'bg-red-500':pct>=60?'bg-yellow-500':'bg-gradient-to-r from-blue-500 to-indigo-500'}`} style={{ width:`${pct}%` }}/>
+                          </div>
+                          <div className="flex justify-between mt-1">
+                            <p className="text-xs text-gray-400">{pct}% capacity used</p>
+                            <p className="text-xs text-gray-400">{f.projectCount || 0} projects</p>
+                          </div>
                         </div>
                       );
                     })}
@@ -818,7 +872,51 @@ export default function HodDashboard() {
                 );
               })()}
 
+            {/* ═══════════════════════ EXTENSIONS ══════════════════════════ */}
+            {activeTab === 'extensions' && (() => {
+              if (!extensionRequests.length && !loadingExtensions) { fetchExtensions(); }
+              return (
+                <motion.div key="extensions" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="space-y-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Calendar className="w-5 h-5 text-indigo-500" />
+                    <h2 className="text-xl font-extrabold text-gray-900">Deadline Extension Requests</h2>
+                    <button onClick={fetchExtensions} className="ml-auto p-1.5 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-500 transition-all"><RefreshCw className="w-4 h-4"/></button>
+                  </div>
+                  {loadingExtensions ? (
+                    <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent"/></div>
+                  ) : extensionRequests.length === 0 ? (
+                    <div className="text-center py-16 text-gray-400"><Calendar className="w-12 h-12 mx-auto mb-3 opacity-30"/><p className="font-medium">No extension requests at this time.</p></div>
+                  ) : (
+                    <div className="space-y-4">
+                      {extensionRequests.map(req => (
+                        <div key={req._id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col md:flex-row gap-4 items-start">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${req.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' : req.status === 'Rejected' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{req.status}</span>
+                              <span className="text-xs text-gray-400">Deadline: <strong>{req.deadlineId?.title}</strong></span>
+                            </div>
+                            <p className="font-bold text-gray-900 text-sm mb-0.5">{req.studentId?.name} <span className="text-gray-400 font-normal text-xs">— {req.studentId?.branch} {req.studentId?.course}</span></p>
+                            <p className="text-xs text-gray-500 mb-1">Original: {req.deadlineId?.dueDate ? new Date(req.deadlineId.dueDate).toLocaleDateString() : 'N/A'} → Requested: <strong>{new Date(req.requestedDate).toLocaleDateString()}</strong></p>
+                            <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">{req.reason}</p>
+                            {req.documentUrl && <a href={req.documentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline mt-1 inline-block">View Supporting Document →</a>}
+                            {req.remarks && <p className="text-xs text-orange-600 mt-1 font-medium">Remark: {req.remarks}</p>}
+                          </div>
+                          {req.status === 'Pending' && (
+                            <div className="flex flex-col gap-2 shrink-0">
+                              <button onClick={() => handleReviewExtension(req._id, 'Approved')} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl transition-all">✓ Approve</button>
+                              <button onClick={() => { const r = prompt('Rejection reason (optional):'); handleReviewExtension(req._id, 'Rejected', r || ''); }} className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition-all">✕ Reject</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })()}
+
             {/* ═══════════════════════ ANNOUNCEMENTS ══════════════════════════ */}
+
             {activeTab === 'announcements' && (
               <motion.div key="announcements" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="space-y-6">
                 <div className="flex items-center justify-between">

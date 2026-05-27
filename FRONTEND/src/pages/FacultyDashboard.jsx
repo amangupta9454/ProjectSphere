@@ -6,17 +6,20 @@ import {
   CheckCircle, XCircle, FileText, RefreshCw, MessageSquare,
   Clock, Send, AlertCircle, Download, Calendar,
   Megaphone, Pin, Plus, X, Trash2, Users, Search,
-  Filter, ChevronDown, ChevronUp, ExternalLink, User
+  Filter, ChevronDown, ChevronUp, ExternalLink, User, TrendingUp
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../lib/api.js';
+import api, { facultyAPI } from '../lib/api.js';
 import Sidebar from '../Components/Sidebar';
+import ProjectTimeline from '../Components/ProjectTimeline';
 
 const TABS = [
-  { id: 'overview',      label: 'Overview',       icon: LayoutDashboard },
-  { id: 'projects',      label: 'My Projects',    icon: FolderOpen },
-  { id: 'pending',       label: 'Pending Review', icon: Clock },
-  { id: 'announcements', label: 'Announcements',  icon: Megaphone },
+  { id: 'overview',   label: 'Overview',       icon: LayoutDashboard },
+  { id: 'projects',   label: 'My Projects',    icon: FolderOpen },
+  { id: 'students',   label: 'My Students',    icon: Users },
+  { id: 'extensions', label: 'Extensions',     icon: Calendar },
+  { id: 'pending',    label: 'Pending Review', icon: Clock },
+  { id: 'announcements', label: 'Announcements', icon: Megaphone },
 ];
 
 const STATUS_BADGE = {
@@ -54,6 +57,16 @@ const FacultyDashboard = () => {
   const [annForm, setAnnForm]           = useState({ title: '', content: '', targetAudience: 'all', pinned: false });
   const [showAnnForm, setShowAnnForm]   = useState(false);
   const [annSubmitting, setAnnSubmitting] = useState(false);
+
+  // My Students
+  const [myStudents, setMyStudents]     = useState([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [studentSearch, setStudentSearch] = useState('');
+
+  // Extension Requests
+  const [extensionRequests, setExtensionRequests] = useState([]);
+  const [loadingExtensions, setLoadingExtensions] = useState(false);
+
   const navigate = useNavigate();
 
   const handleLogout = () => { localStorage.removeItem('user'); navigate('/login'); };
@@ -69,6 +82,38 @@ const FacultyDashboard = () => {
   }, []);
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+
+  const fetchMyStudents = useCallback(async () => {
+    setLoadingStudents(true);
+    try {
+      const res = await facultyAPI.getMyStudents();
+      setMyStudents(res.data || []);
+    } catch (_) {}
+    finally { setLoadingStudents(false); }
+  }, []);
+
+  const fetchExtensions = useCallback(async () => {
+    setLoadingExtensions(true);
+    try {
+      const res = await facultyAPI.getDashboard();
+      setExtensionRequests(res.data.extensionRequests || []);
+    } catch (_) {}
+    finally { setLoadingExtensions(false); }
+  }, []);
+
+  const handleReviewExtension = async (id, status, remarks = '') => {
+    try {
+      await facultyAPI.reviewExtension(id, { status, remarks });
+      toast.success(`Extension request ${status.toLowerCase()}!`);
+      fetchExtensions();
+    } catch (e) { toast.error(e.response?.data?.message || 'Action failed'); }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'students' && myStudents.length === 0) fetchMyStudents();
+    if (activeTab === 'extensions' && extensionRequests.length === 0) fetchExtensions();
+  }, [activeTab, myStudents.length, extensionRequests.length, fetchMyStudents, fetchExtensions]);
+
   useEffect(() => {
     if (activeTab === 'announcements') {
       api.get('/announcements').then(r => setAnnouncements(r.data.announcements || [])).catch(() => {});
@@ -381,8 +426,113 @@ const FacultyDashboard = () => {
               </div>
             )}
 
+            {/* ── MY STUDENTS ── */}
+            {activeTab === 'students' && (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-gray-900">My Students</h2>
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      {data.totalStudentHeads || 0} students supervised out of max {data.maxStudents || 60}
+                    </p>
+                    {/* Capacity bar */}
+                    <div className="w-64 bg-gray-100 rounded-full h-2 mt-2">
+                      <div
+                        className={`h-2 rounded-full transition-all ${((data.totalStudentHeads||0)/(data.maxStudents||60))>=0.9?'bg-red-500':((data.totalStudentHeads||0)/(data.maxStudents||60))>=0.6?'bg-yellow-500':'bg-gradient-to-r from-blue-500 to-indigo-500'}`}
+                        style={{ width: `${Math.min(Math.round(((data.totalStudentHeads||0)/(data.maxStudents||60))*100),100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <button onClick={fetchMyStudents} className="p-2 rounded-xl bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-500 transition-all"><RefreshCw className="w-4 h-4"/></button>
+                </div>
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input placeholder="Search students by project or name..." value={studentSearch} onChange={e => setStudentSearch(e.target.value)}
+                    className="w-full sm:w-96 pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+                </div>
+                {loadingStudents ? (
+                  <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent"/></div>
+                ) : myStudents.length === 0 ? (
+                  <div className="text-center py-16 text-gray-400"><Users className="w-12 h-12 mx-auto mb-3 opacity-30"/><p className="font-medium">No students yet.</p></div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {myStudents.filter(s => !studentSearch || s.projectTitle?.toLowerCase().includes(studentSearch.toLowerCase()) || s.leader?.name?.toLowerCase().includes(studentSearch.toLowerCase())).map(s => (
+                      <div key={s._id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:border-indigo-200 hover:shadow-md transition-all">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <p className="font-bold text-gray-900 text-sm line-clamp-2">{s.projectTitle}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{s.leader?.name}</p>
+                          </div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${s.projectStatus === 'Faculty Accepted' ? 'bg-green-50 text-green-700 border-green-200' : s.projectStatus === 'Submitted' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
+                            {s.projectStatus}
+                          </span>
+                        </div>
+                        <div className="mb-3">
+                          <div className="flex justify-between text-xs text-gray-500 mb-1">
+                            <span>Progress</span><span>{s.progress || 0}%</span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-1.5">
+                            <div className="bg-gradient-to-r from-blue-500 to-indigo-500 h-1.5 rounded-full" style={{ width: `${s.progress || 0}%` }}/>
+                          </div>
+                        </div>
+                        {s.latestMilestone && (
+                          <p className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg font-medium mb-2">📍 {s.latestMilestone}</p>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${s.finalSubmissionStatus === 'Accepted' ? 'bg-green-50 text-green-700 border-green-200' : s.finalSubmissionStatus === 'Rejected' ? 'bg-red-50 text-red-600 border-red-200' : s.finalSubmissionStatus === 'Pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                            Final: {s.finalSubmissionStatus}
+                          </span>
+                          {s.teamMembers?.length > 0 && <span className="text-[10px] text-gray-400">+{s.teamMembers.length} members</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── EXTENSIONS ── */}
+            {activeTab === 'extensions' && (
+              <div className="space-y-5">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-5 h-5 text-indigo-500" />
+                  <h2 className="text-xl font-extrabold text-gray-900">Deadline Extension Requests</h2>
+                  <button onClick={fetchExtensions} className="ml-auto p-1.5 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-500 transition-all"><RefreshCw className="w-4 h-4"/></button>
+                </div>
+                {loadingExtensions ? (
+                  <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent"/></div>
+                ) : extensionRequests.length === 0 ? (
+                  <div className="text-center py-16 text-gray-400"><Calendar className="w-12 h-12 mx-auto mb-3 opacity-30"/><p className="font-medium">No pending extension requests.</p></div>
+                ) : (
+                  <div className="space-y-4">
+                    {extensionRequests.map(req => (
+                      <div key={req._id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col md:flex-row gap-4 items-start">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${req.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' : req.status === 'Rejected' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{req.status}</span>
+                            <span className="text-xs text-gray-400">{req.deadlineId?.title}</span>
+                          </div>
+                          <p className="font-bold text-gray-900 text-sm">{req.projectId?.title}</p>
+                          <p className="text-xs text-gray-500">{req.studentId?.name} — Requested: <strong>{new Date(req.requestedDate).toLocaleDateString()}</strong></p>
+                          <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100 mt-2">{req.reason}</p>
+                          {req.documentUrl && <a href={req.documentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline mt-1 inline-block">View Document →</a>}
+                        </div>
+                        {req.status === 'Pending' && (
+                          <div className="flex flex-col gap-2 shrink-0">
+                            <button onClick={() => handleReviewExtension(req._id, 'Approved')} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl transition-all">✓ Approve</button>
+                            <button onClick={() => { const r = prompt('Rejection reason (optional):'); handleReviewExtension(req._id, 'Rejected', r || ''); }} className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition-all">✕ Reject</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── PENDING REVIEW ── */}
             {activeTab === 'pending' && (
+
               <div className="space-y-5">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
