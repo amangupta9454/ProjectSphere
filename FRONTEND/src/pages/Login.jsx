@@ -577,7 +577,7 @@ import {
   Sparkles, Globe
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import axios from 'axios';
+import api from '../lib/api';
 
 const TiltCard = ({ children, className = '', intensity = 8 }) => {
   const cardRef = useRef(null);
@@ -741,7 +741,7 @@ const Login = ({ role = 'student' }) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { data } = await axios.post('/api/auth/login', formData);
+      const { data } = await api.post('/auth/login', formData);
       localStorage.setItem('user', JSON.stringify(data));
       toast.success('Login successful!');
       if (data.role === 'student') navigate('/student/dashboard');
@@ -760,7 +760,7 @@ const Login = ({ role = 'student' }) => {
     if (!resetData.email) return toast.error('Enter your email');
     setResetLoading(true);
     try {
-      await axios.post('/api/auth/forgot-password', { email: resetData.email, role });
+      await api.post('/auth/forgot-password', { email: resetData.email, role });
       toast.success('OTP sent to your email');
       setResetStep(2);
     } catch (error) {
@@ -773,7 +773,7 @@ const Login = ({ role = 'student' }) => {
     if (!resetData.otp || resetData.otp.length < 6) return toast.error('Enter complete OTP');
     setResetLoading(true);
     try {
-      const { data } = await axios.post('/api/auth/verify-reset-otp', { email: resetData.email, otp: resetData.otp, role });
+      const { data } = await api.post('/auth/verify-reset-otp', { email: resetData.email, otp: resetData.otp, role });
       setResetData(prev => ({ ...prev, resetToken: data.resetToken }));
       toast.success('OTP verified!');
       setResetStep(3);
@@ -788,7 +788,7 @@ const Login = ({ role = 'student' }) => {
     if (resetData.newPassword !== resetData.confirmPassword) return toast.error('Passwords do not match');
     setResetLoading(true);
     try {
-      await axios.post('/api/auth/reset-password', { resetToken: resetData.resetToken, newPassword: resetData.newPassword });
+      await api.post('/auth/reset-password', { resetToken: resetData.resetToken, newPassword: resetData.newPassword });
       toast.success('Password reset successfully!');
       closeForgotModal();
     } catch (error) {

@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldCheck, ArrowRight, Mail, RefreshCw, CheckCircle, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
-import axios from 'axios';
+import api from '../lib/api';
 
 // ── Floating ambient orb
 const FloatingOrb = ({ className, delay = 0 }) => (
@@ -75,7 +75,7 @@ const VerifyOTP = () => {
     if (!isComplete) return toast.error('Please enter the complete 6-character OTP.');
     setLoading(true);
     try {
-      await axios.post('/api/auth/verify-otp', { email, otp });
+      await api.post('/auth/verify-otp', { email, otp });
       setVerified(true);
       toast.success('Email verified successfully!');
       setTimeout(() => navigate('/login'), 1800);
@@ -90,7 +90,7 @@ const VerifyOTP = () => {
     if (!email) return toast.error('No email found.');
     setResending(true);
     try {
-      await axios.post('/api/auth/resend-otp', { email });
+      await api.post('/auth/resend-otp', { email });
       toast.success('A new OTP has been sent to your email.');
       setDigits(Array(OTP_LENGTH).fill(''));
       focusBox(0);

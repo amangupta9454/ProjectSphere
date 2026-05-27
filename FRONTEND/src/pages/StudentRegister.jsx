@@ -7,7 +7,7 @@ import {
   GraduationCap, Shield, Zap, Sparkles, Target,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import axios from 'axios';
+import api from '../lib/api';
 
 // ── Shared input styles (light theme)
 const inputCls =
@@ -76,7 +76,7 @@ const StudentRegister = () => {
     Object.keys(formData).forEach((k) => payload.append(k, formData[k]));
     if (profilePhoto) payload.append('profilePhoto', profilePhoto);
     try {
-      const { data } = await axios.post('/api/auth/register/student', payload, {
+      const { data } = await api.post('/auth/register/student', payload, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success(data.message || 'Registered! Check your email for the OTP.');
