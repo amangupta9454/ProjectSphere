@@ -6,6 +6,7 @@ import { Faculty } from '../models/Faculty.model.js';
 import { Student } from '../models/Student.model.js';
 import { sendEmail } from '../config/nodemailer.js';
 import { emailTemplates } from '../utils/emailTemplates.js';
+import { ExtensionRequest } from '../models/ExtensionRequest.model.js';
 
 // ── getFacultyDashboard ───────────────────────────────────────────────────────
 export const getFacultyDashboard = async (req, res) => {
