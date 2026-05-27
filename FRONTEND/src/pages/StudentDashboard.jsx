@@ -5,7 +5,7 @@ import {
   LayoutDashboard, BookOpen, Users, Target, Send, Megaphone, User,
   Bell, Clock, RefreshCw, CheckCircle, XCircle, FileText, Paperclip,
   FolderOpen, Calendar, ChevronRight, TrendingUp, AlertTriangle, Play,
-  Volume2, VolumeX, Sparkles, Upload, Info, MessageSquare, Download
+  Volume2, VolumeX, Sparkles, Upload, Info, MessageSquare, Download, Search
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api.js';
