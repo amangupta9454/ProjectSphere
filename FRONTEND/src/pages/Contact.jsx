@@ -620,8 +620,8 @@ const Contact = () => {
     {
       icon: Phone,
       label: 'Phone',
-      value: '+1 (555) 123-4567',
-      sub: 'Mon–Fri, 9AM–5PM EST',
+      value: '+91 7983727005',
+      sub: 'Mon–Fri, 9AM–5PM IST',
       accent: 'bg-blue-500',
       bg: 'bg-blue-50',
       border: 'border-blue-100',
@@ -630,7 +630,7 @@ const Contact = () => {
     {
       icon: Mail,
       label: 'Email',
-      value: 'support@gateway.edu',
+      value: 'aicoach219@gmail.com',
       sub: 'We reply within 24 hours',
       accent: 'bg-cyan-500',
       bg: 'bg-cyan-50',
@@ -640,8 +640,8 @@ const Contact = () => {
     {
       icon: MapPin,
       label: 'Location',
-      value: '123 Academic Block',
-      sub: 'Main Campus, University Row',
+      value: 'Hi-Tech Institute of Engineering & Technology',
+      sub: 'NH-24, Delhi-Hapur Road, Ghaziabad, UP',
       accent: 'bg-teal-500',
       bg: 'bg-teal-50',
       border: 'border-teal-100',
