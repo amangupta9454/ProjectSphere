@@ -2,6 +2,9 @@ import { Deadline } from '../models/Deadline.model.js';
 import { Notification } from '../models/Notification.model.js';
 import { Student } from '../models/Student.model.js';
 import { Faculty } from '../models/Faculty.model.js';
+import { ProjectProposal } from '../models/Proposal.model.js';
+import { sendEmail } from '../config/nodemailer.js';
+import { emailTemplates } from '../utils/emailTemplates.js';
 
 // Helper: create notifications for all users of given roles
 const notifyUsers = async (roles, message, type = 'deadline') => {
@@ -72,6 +75,65 @@ export const getDeadlinesForUser = async (req, res) => {
     }).sort({ dueDate: 1 });
     res.status(200).json(deadlines);
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const updateDeadline = async (req, res) => {
+  try {
+    const { title, description, dueDate } = req.body;
+    const deadline = await Deadline.findById(req.params.id);
+    if (!deadline) return res.status(404).json({ message: 'Deadline not found.' });
+
+    // Restrict faculty from rescheduling global deadlines
+    if (req.user.role === 'faculty' && deadline.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You are only authorized to reschedule deadlines you created.' });
+    }
+
+    const oldDate = deadline.dueDate;
+    deadline.title = title || deadline.title;
+    deadline.description = description || deadline.description;
+    deadline.dueDate = dueDate || deadline.dueDate;
+    await deadline.save();
+
+    const message = `Deadline "${deadline.title}" has been rescheduled to: ${new Date(deadline.dueDate).toLocaleDateString()}`;
+
+    if (deadline.targetProjects && deadline.targetProjects.length > 0) {
+      // Find targeted student projects
+      const proposals = await ProjectProposal.find({ _id: { $in: deadline.targetProjects } }).populate('studentId', 'name email');
+      const studentIds = proposals.map(p => p.studentId._id);
+      
+      const notifications = studentIds.map(userId => ({
+        userId,
+        userModel: 'Student',
+        message,
+        type: 'deadline'
+      }));
+      await Notification.insertMany(notifications);
+
+      // Email Faculty members
+      proposals.forEach(async (p) => {
+        if (p.assignedFaculty) {
+          const faculty = await Faculty.findById(p.assignedFaculty);
+          if (faculty) {
+            sendEmail(
+              faculty.email,
+              `🔄 Rescheduled Project Deadline — "${p.title}"`,
+              emailTemplates.rescheduledDeadline(faculty.name, p.title, deadline.title, oldDate, deadline.dueDate)
+            );
+          }
+        }
+      });
+    } else {
+      // Global roles
+      const label = deadline.targetRoles?.includes('all') ? ['student', 'faculty'] : (deadline.targetRoles || ['student', 'faculty']);
+      await notifyUsers(label, message, 'deadline');
+    }
+
+    console.log(`\x1b[32m[SUCCESS]\x1b[0m Deadline updated/rescheduled: "${deadline.title}"`);
+    res.status(200).json({ message: 'Deadline rescheduled successfully', deadline });
+  } catch (error) {
+    console.error('\x1b[31m[ERROR]\x1b[0m updateDeadline:', error.message);
     res.status(500).json({ message: error.message });
   }
 };

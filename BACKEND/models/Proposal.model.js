@@ -40,8 +40,8 @@ const projectProposalSchema = new mongoose.Schema(
       type: String,
       enum: [
         'Pending HOD Review',
-        'HOD Approved',
         'Pending Faculty Assignment',
+        'HOD Approved',
         'Rejected (HOD)',
         'Faculty Assigned',
         'Faculty Accepted',
@@ -50,23 +50,6 @@ const projectProposalSchema = new mongoose.Schema(
       ],
       default: 'Pending HOD Review',
     },
-    // Project timeline milestones — added by student with optional faculty/HOD comments
-    timeline: [{
-      milestoneStatus: {
-        type: String,
-        enum: ['PROJECT STARTED', 'PROTOTYPE CREATED', 'PROJECT COMPLETE', 'REPORT PREPARED', 'PROJECT SUBMITTED'],
-        required: true
-      },
-      remarks: { type: String, default: '' },
-      timestamp: { type: Date, default: Date.now },
-      comments: [{
-        message:      { type: String, required: true },
-        addedBy:      { type: mongoose.Schema.Types.ObjectId, required: true },
-        addedModel:   { type: String, required: true, enum: ['Faculty', 'Hod', 'Student'] },
-        addedByName:  { type: String, required: true },
-        addedAt:      { type: Date, default: Date.now }
-      }]
-    }],
     progress: { type: Number, default: 0, min: 0, max: 100 },
     hodReview: {
       action: String,
@@ -88,8 +71,28 @@ const projectProposalSchema = new mongoose.Schema(
         addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty' },
       },
     ],
+    // Real-time progress timeline updates
+    timeline: [
+      {
+        status: {
+          type: String,
+          enum: ['PROTOTYPE CREATED', 'PROJECT STARTED', 'PROJECT COMPLETE', 'REPORT PREPARED', 'PROJECT SUBMITTED'],
+          required: true
+        },
+        timestamp: { type: Date, default: Date.now },
+        remarks: { type: String, default: '' },
+        facultyComment: { type: String, default: '' }
+      }
+    ],
     // Linked deadline (optional)
     deadline: { type: mongoose.Schema.Types.ObjectId, ref: 'Deadline' },
+    // Individual extensions on global deadlines
+    extendedDeadlines: [
+      {
+        deadlineId: { type: mongoose.Schema.Types.ObjectId, ref: 'Deadline' },
+        extendedDate: { type: Date, required: true }
+      }
+    ]
   },
   { timestamps: true }
 );

@@ -21,7 +21,7 @@ const facultySchema = new mongoose.Schema(
     employeeId: String,
     rejectionReason: String,
     specialization: String,
-    maxStudents: { type: Number, default: 60 },
+    maxStudents: { type: Number, default: 5 },
   },
   { timestamps: true }
 );

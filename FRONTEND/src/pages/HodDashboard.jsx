@@ -8,31 +8,29 @@ import {
   TrendingUp, BookOpen, AlertCircle, MessageSquare, Megaphone, Pin, PinOff, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api, { hodAPI } from '../lib/api.js';
+import api from '../lib/api.js';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import Sidebar from '../Components/Sidebar';
 
-const HOD_NAV = (pendingFac, pendingProps, notifications, pendingAssignment) => [
+const HOD_NAV = (pendingFac, pendingProps, notifications) => [
   { id: 'overview',      label: 'Overview',        icon: LayoutDashboard },
   { id: 'projects',      label: 'Projects',         icon: FolderOpen,  badge: 0 },
   { id: 'students',      label: 'Students',         icon: Users },
   { id: 'faculty',       label: 'Faculty',          icon: UserCheck,   badge: pendingFac },
   { id: 'deadlines',     label: 'Deadlines',        icon: Clock },
-  { id: 'extensions',    label: 'Extensions',       icon: Calendar,    badge: 0 },
   { id: 'activity',      label: 'Activity Log',     icon: TrendingUp },
   { id: 'announcements', label: 'Announcements',    icon: Megaphone },
   { id: 'notifications', label: 'Notifications',    icon: Bell,        badge: notifications },
 ];
 
 const STATUS_COLORS = {
-  'Pending HOD Review':         'bg-yellow-50 text-yellow-700 border-yellow-200',
-  'HOD Approved':               'bg-blue-50 text-blue-700 border-blue-200',
-  'Pending Faculty Assignment': 'bg-violet-50 text-violet-700 border-violet-200',
-  'Rejected (HOD)':             'bg-red-50 text-red-600 border-red-200',
-  'Faculty Assigned':           'bg-indigo-50 text-indigo-700 border-indigo-200',
-  'Faculty Accepted':           'bg-green-50 text-green-700 border-green-200',
-  'Rejected (Faculty)':         'bg-orange-50 text-orange-600 border-orange-200',
-  'Submitted':                  'bg-purple-50 text-purple-700 border-purple-200',
+  'Pending HOD Review':  'bg-yellow-50 text-yellow-700 border-yellow-200',
+  'HOD Approved':        'bg-blue-50 text-blue-700 border-blue-200',
+  'Rejected (HOD)':      'bg-red-50 text-red-600 border-red-200',
+  'Faculty Assigned':    'bg-indigo-50 text-indigo-700 border-indigo-200',
+  'Faculty Accepted':    'bg-green-50 text-green-700 border-green-200',
+  'Rejected (Faculty)':  'bg-orange-50 text-orange-600 border-orange-200',
+  'Submitted':           'bg-purple-50 text-purple-700 border-purple-200',
 };
 
 export default function HodDashboard() {
@@ -48,6 +46,7 @@ export default function HodDashboard() {
   const [activeModal, setActiveModal]         = useState({ type: null, id: null });
   const [reason, setReason]                   = useState('');
   const [selectedFaculty, setSelectedFaculty] = useState('');
+  const [facSearch, setFacSearch]             = useState('');
   const [projectFilter, setProjectFilter]     = useState('all');
   const [searchQuery, setSearchQuery]         = useState('');
   const [deadlineForm, setDeadlineForm]       = useState({ title: '', description: '', dueDate: '', targetRoles: ['all'] });
@@ -57,14 +56,6 @@ export default function HodDashboard() {
   const [annForm, setAnnForm]                 = useState({ title: '', content: '', targetAudience: 'all', pinned: false });
   const [showAnnForm, setShowAnnForm]         = useState(false);
   const [annSubmitting, setAnnSubmitting]     = useState(false);
-
-  // Extension Requests
-  const [extensionRequests, setExtensionRequests] = useState([]);
-  const [loadingExtensions, setLoadingExtensions] = useState(false);
-
-  // Skip Faculty Assignment (Approve then assign later)
-  const [skipFacultyAssignment, setSkipFacultyAssignment] = useState(false);
-
   const navigate = useNavigate();
 
   const handleLogout = () => { localStorage.removeItem('user'); navigate('/login'); };
@@ -148,53 +139,39 @@ export default function HodDashboard() {
   const resolveProposal = async (id, action) => {
     try {
       if (action === 'approve') {
-        if (skipFacultyAssignment) {
-          // Approve and mark as Pending Faculty Assignment (skip assigning now)
-          await hodAPI.approveProposal(id, { skipFacultyAssignment: true });
-          toast.success('Proposal approved! Faculty will be assigned later.');
-          setActiveModal({ type: null, id: null });
-          setSkipFacultyAssignment(false);
-        } else {
-          await hodAPI.approveProposal(id, {});
-          toast.success('Proposal approved! Now assign a faculty supervisor.');
-          setSelectedFaculty('');
-          setActiveModal({ type: 'assignFac', id });
-        }
+        // Now handled by handleApproveProposal modal!
       } else {
         if (reason.length < 20) return toast.error('Reason must be >20 chars');
-        await hodAPI.rejectProposal(id, reason);
-        toast.success('Proposal rejected');
+        await api.put(`/hod/proposals/${id}/reject`, { reason }); toast.success('Proposal rejected');
         setActiveModal({ type: null, id: null }); setReason('');
       }
       fetchDashboard(); if (activeTab === 'projects') fetchProjects();
-    } catch (e) { toast.error(e.response?.data?.message || 'Action failed'); }
+    } catch { toast.error('Action failed'); }
+  };
+
+  const handleApproveProposal = async (id, facultyId) => {
+    try {
+      const payload = facultyId ? { facultyId } : {};
+      await api.put(`/hod/proposals/${id}/approve`, payload);
+      toast.success(facultyId ? 'Proposal approved & Faculty assigned!' : 'Proposal approved by HOD (Supervisor pending)');
+      setActiveModal({ type: null, id: null });
+      setSelectedFaculty('');
+      setFacSearch('');
+      fetchDashboard();
+      if (activeTab === 'projects') fetchProjects();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Approval failed');
+    }
   };
 
   const assignFaculty = async (id) => {
     if (!selectedFaculty) return toast.error('Select a faculty member');
     try {
-      await hodAPI.assignFaculty(id, selectedFaculty);
-      toast.success('Faculty assigned successfully!');
+      await api.put(`/hod/proposals/${id}/assign`, { facultyId: selectedFaculty });
+      toast.success('Faculty assigned!');
       setActiveModal({ type: null, id: null }); setSelectedFaculty('');
       fetchDashboard(); if (activeTab === 'projects') fetchProjects();
-    } catch (e) { toast.error(e.response?.data?.message || 'Assignment failed — capacity may be exceeded'); }
-  };
-
-  const fetchExtensions = useCallback(async () => {
-    setLoadingExtensions(true);
-    try {
-      const res = await hodAPI.getExtensions();
-      setExtensionRequests(res.data || []);
-    } catch (_) {}
-    finally { setLoadingExtensions(false); }
-  }, []);
-
-  const handleReviewExtension = async (id, status, remarks = '') => {
-    try {
-      await hodAPI.reviewExtension(id, { status, remarks });
-      toast.success(`Extension request ${status.toLowerCase()}!`);
-      fetchExtensions();
-    } catch (e) { toast.error(e.response?.data?.message || 'Action failed'); }
+    } catch (e) { toast.error(e.response?.data?.message || 'Assignment failed'); }
   };
 
   const evaluateFinalSubmission = async (id, status) => {
@@ -378,7 +355,7 @@ export default function HodDashboard() {
                     {facultyWorkload.length === 0 ? <p className="text-sm text-gray-400 italic">No faculty data available to graph.</p> : (
                       <div className="h-64 w-full mt-4">
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={facultyWorkload.map(f => ({ name: f.name.split(' ')[0], Students: f.studentCount || 0, Capacity: f.maxStudents || 60 }))} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                          <BarChart data={facultyWorkload.map(f => ({ name: f.name.split(' ')[0], Assigned: f.projectCount, Capacity: 10 }))} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                             <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} />
                             <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} domain={[0, 10]} />
@@ -429,14 +406,8 @@ export default function HodDashboard() {
                                 <p className="text-xs text-gray-500 mt-0.5">{p.studentId?.name} • {p.studentId?.course} {p.studentId?.branch} <span className="ml-2 bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full border border-purple-100 text-[10px]">{p.domain}</span></p>
                               </div>
                               <div className="flex gap-2 shrink-0">
-                                <button onClick={() => resolveProposal(p._id, 'approve')} className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold">
-                                  {skipFacultyAssignment ? 'Approve (Skip Faculty)' : 'Approve'}
-                                </button>
-                                <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-gray-500">
-                                  <input type="checkbox" checked={skipFacultyAssignment} onChange={e => setSkipFacultyAssignment(e.target.checked)} className="rounded" />
-                                  Assign faculty later
-                                </label>
-                                <button onClick={() => setActiveModal({ type: 'assignFac', id: p._id })} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1"><CornerDownRight className="w-3 h-3" /> Assign Now</button>
+                                <button onClick={() => { setSelectedFaculty(''); setFacSearch(''); setActiveModal({ type: 'approveProposalModal', id: p._id }); }} className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold">Approve</button>
+                                <button onClick={() => setActiveModal({ type: 'assignFac', id: p._id })} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1"><CornerDownRight className="w-3 h-3" /> Assign</button>
                                 <button onClick={() => setActiveModal({ type: 'rejectProp', id: p._id })} className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold"><XCircle className="w-3.5 h-3.5" /></button>
                               </div>
                             </div>
@@ -455,19 +426,13 @@ export default function HodDashboard() {
                               </div>
                             )}
                             {activeModal.type === 'assignFac' && activeModal.id === p._id && (
-                              <div className="flex flex-col gap-2 mt-3">
+                              <div className="flex gap-2 mt-3">
                                 <select className="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs focus:outline-none focus:border-blue-500" value={selectedFaculty} onChange={e => setSelectedFaculty(e.target.value)}>
-                                  <option value="">Select Faculty Supervisor</option>
-                                  {approvedFacultyList.map(f => (
-                                    <option key={f._id} value={f._id} disabled={!f.available}>
-                                      {f.name} ({f.department}) — {f.studentCount || 0}/{f.maxStudents || 60} students {!f.available ? '⚠️ FULL' : '✓'}
-                                    </option>
-                                  ))}
+                                  <option value="">Select Faculty</option>
+                                  {approvedFacultyList.map(f => <option key={f._id} value={f._id}>{f.name} ({f.department})</option>)}
                                 </select>
-                                <div className="flex gap-2">
-                                  <button onClick={() => setActiveModal({ type: null, id: null })} className="px-3 py-1.5 text-xs bg-gray-100 rounded-lg">Cancel</button>
-                                  <button onClick={() => assignFaculty(p._id)} className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-bold">Assign</button>
-                                </div>
+                                <button onClick={() => setActiveModal({ type: null, id: null })} className="px-3 py-1.5 text-xs bg-gray-100 rounded-lg">Cancel</button>
+                                <button onClick={() => assignFaculty(p._id)} className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-bold">Assign</button>
                               </div>
                             )}
                           </div>
@@ -493,7 +458,11 @@ export default function HodDashboard() {
                             </div>
                             <select className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs mb-2 focus:outline-none" defaultValue="" onChange={e => setSelectedFaculty(e.target.value)}>
                               <option value="" disabled>Select Faculty</option>
-                              {approvedFacultyList.map(f => <option key={f._id} value={f._id}>{f.name} — {f.department}</option>)}
+                              {approvedFacultyList.map(f => (
+                                <option key={f._id} value={f._id}>
+                                  {f.name} ({f.studentCount || 0}/60 Students, {f.availableSlots ?? (60 - (f.studentCount || 0))} slots left)
+                                </option>
+                              ))}
                             </select>
                             <button onClick={() => assignFaculty(p._id)} className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all">Assign Faculty</button>
                           </div>
@@ -509,8 +478,15 @@ export default function HodDashboard() {
                 <div>
                   <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                     <div className="flex flex-wrap gap-2">
-                      {['all','Pending HOD Review','HOD Approved','Faculty Assigned','Faculty Accepted','Submitted','Rejected (HOD)','Rejected (Faculty)'].map(s => (
-                        <button key={s} onClick={() => setProjectFilter(s)} className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all ${projectFilter === s ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300'}`}>{s === 'all' ? 'All' : s}</button>
+                      {[
+                        { id: 'all', label: 'All Projects' },
+                        { id: 'pending', label: 'Pending HOD Review' },
+                        { id: 'approved', label: 'Approved Projects' },
+                        { id: 'rejected', label: 'Rejected Proposals' },
+                        { id: 'faculty_assigned', label: 'Faculty Assigned' },
+                        { id: 'deadline_near', label: 'Deadline Near (≤10 days)' }
+                      ].map(f => (
+                        <button key={f.id} onClick={() => setProjectFilter(f.id)} className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all ${projectFilter === f.id ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300'}`}>{f.label}</button>
                       ))}
                     </div>
                     <button onClick={downloadExcel} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-md shadow-green-500/20">
@@ -556,8 +532,13 @@ export default function HodDashboard() {
                         )}
                         {p.status === 'Pending HOD Review' && (
                           <div className="flex gap-2 mt-3">
-                            <button onClick={() => resolveProposal(p._id, 'approve')} className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold">Approve</button>
+                            <button onClick={() => { setSelectedFaculty(''); setFacSearch(''); setActiveModal({ type: 'approveProposalModal', id: p._id }); }} className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold">Approve</button>
                             <button onClick={() => setActiveModal({ type: 'rejectProp', id: p._id })} className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold">Reject</button>
+                          </div>
+                        )}
+                        {(p.status === 'Pending Faculty Assignment' || p.status === 'Rejected (Faculty)' || p.status === 'HOD Approved') && (
+                          <div className="mt-3 flex gap-2">
+                            <button onClick={() => { setSelectedFaculty(''); setFacSearch(''); setActiveModal({ type: 'assignFac', id: p._id }); }} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1"><CornerDownRight className="w-3.5 h-3.5" /> Assign Faculty</button>
                           </div>
                         )}
                         {activeModal.type === 'rejectProp' && activeModal.id === p._id && (
@@ -643,22 +624,15 @@ export default function HodDashboard() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {facultyWorkload.map(f => {
-                      const maxCap = f.maxStudents || 60;
-                      const pct = Math.min(Math.round(((f.studentCount || 0)/maxCap)*100), 100);
-                      const statusColor = pct >= 90 ? 'bg-red-50 text-red-600 border-red-200' : pct >= 60 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-green-50 text-green-600 border-green-200';
+                      const pct = Math.min(Math.round((f.projectCount/10)*100), 100);
                       return (
                         <div key={f._id} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
                           <div className="flex items-start justify-between mb-3">
                             <div><p className="font-bold text-gray-900">{f.name}</p><p className="text-xs text-gray-500">{f.department}</p><p className="text-xs text-gray-400">{f.email}</p></div>
-                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${statusColor}`}>{f.studentCount || 0}/{maxCap} students</span>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${pct > 80 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-600 border-green-200'}`}>{f.projectCount}/10</span>
                           </div>
-                          <div className="w-full bg-gray-100 rounded-full h-2">
-                            <div className={`h-2 rounded-full transition-all ${pct>=90?'bg-red-500':pct>=60?'bg-yellow-500':'bg-gradient-to-r from-blue-500 to-indigo-500'}`} style={{ width:`${pct}%` }}/>
-                          </div>
-                          <div className="flex justify-between mt-1">
-                            <p className="text-xs text-gray-400">{pct}% capacity used</p>
-                            <p className="text-xs text-gray-400">{f.projectCount || 0} projects</p>
-                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-2"><div className={`h-2 rounded-full transition-all ${pct>80?'bg-red-500':'bg-gradient-to-r from-blue-500 to-indigo-500'}`} style={{ width:`${pct}%` }}></div></div>
+                          <p className="text-xs text-gray-400 mt-1">{pct}% workload</p>
                         </div>
                       );
                     })}
@@ -814,11 +788,21 @@ export default function HodDashboard() {
                 </div>
               )}
 
-              {/* ════ GLOBAL: ASSIGN FACULTY MODAL (appears after HOD approval) ════ */}
+              {/* ════ GLOBAL: ASSIGN FACULTY MODAL (appears after HOD approval or from projects tab) ════ */}
               {activeModal.type === 'assignFac' && activeModal.id && (() => {
-                // Find proposal from pending OR approvedNeedingAssignment lists
-                const allProposals = [...(data.pendingProposals || []), ...(data.approvedNeedingAssignment || [])];
+                // Find proposal from pending OR approvedNeedingAssignment OR projects lists
+                const allProposals = [...(data.pendingProposals || []), ...(data.approvedNeedingAssignment || []), ...projects];
                 const proposal = allProposals.find(p => p._id === activeModal.id);
+
+                // Filter faculty by search query
+                const filteredFaculties = approvedFacultyList.filter(f => 
+                  f.name.toLowerCase().includes(facSearch.toLowerCase()) ||
+                  f.department.toLowerCase().includes(facSearch.toLowerCase()) ||
+                  f.email.toLowerCase().includes(facSearch.toLowerCase())
+                );
+
+                const studentRequiredSlots = proposal ? (1 + (proposal.teamMembers?.length || 0)) : 1;
+
                 return (
                   <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                     <motion.div initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
@@ -826,9 +810,9 @@ export default function HodDashboard() {
                         <div className="flex items-center justify-between">
                           <div>
                             <h2 className="font-bold text-white text-lg">Assign Faculty Supervisor</h2>
-                            <p className="text-blue-100 text-xs mt-0.5">Choose a faculty from your department to supervise this project.</p>
+                            <p className="text-blue-100 text-xs mt-0.5">Choose an approved supervisor for this project.</p>
                           </div>
-                          <button onClick={() => setActiveModal({ type: null, id: null })} className="text-white/70 hover:text-white transition-colors"><XCircle className="w-5 h-5" /></button>
+                          <button onClick={() => { setActiveModal({ type: null, id: null }); setSelectedFaculty(''); setFacSearch(''); }} className="text-white/70 hover:text-white transition-colors"><XCircle className="w-5 h-5" /></button>
                         </div>
                       </div>
                       {proposal && (
@@ -836,10 +820,20 @@ export default function HodDashboard() {
                           <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Project</p>
                           <p className="font-bold text-gray-900">{proposal.title}</p>
                           <p className="text-xs text-gray-500 mt-0.5">{proposal.studentId?.name} • {proposal.studentId?.course} — {proposal.studentId?.branch}</p>
+                          <p className="text-[11px] text-blue-600 font-semibold mt-1">Requires {studentRequiredSlots} workload slots ({studentRequiredSlots} team member{studentRequiredSlots > 1 ? 's' : ''})</p>
                           {proposal.description && <p className="text-xs text-gray-400 mt-2 border-l-4 border-blue-300 pl-2 line-clamp-2">{proposal.description}</p>}
                         </div>
                       )}
                       <div className="p-5 space-y-4">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <input 
+                            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:border-blue-500" 
+                            placeholder="Search faculty by name, department, or email..." 
+                            value={facSearch} 
+                            onChange={e => setFacSearch(e.target.value)} 
+                          />
+                        </div>
                         {approvedFacultyList.length === 0 ? (
                           <div className="text-center py-6 text-gray-400">
                             <p className="text-sm font-medium">No approved faculty in your department.</p>
@@ -848,22 +842,52 @@ export default function HodDashboard() {
                         ) : (
                           <div className="space-y-2">
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Select Faculty Supervisor</label>
-                            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                              {approvedFacultyList.map(f => (
-                                <label key={f._id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${selectedFaculty === f._id ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-200 hover:bg-blue-50/30'}`}>
-                                  <input type="radio" name="faculty" value={f._id} checked={selectedFaculty === f._id} onChange={e => setSelectedFaculty(e.target.value)} className="accent-blue-600" />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-gray-900 text-sm truncate">{f.name}</p>
-                                    <p className="text-xs text-gray-500 truncate">{f.department} • {f.email}</p>
-                                  </div>
-                                  {selectedFaculty === f._id && <CheckCircle className="w-4 h-4 text-blue-500 shrink-0" />}
-                                </label>
-                              ))}
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                              {filteredFaculties.map(f => {
+                                const isOversubscribed = f.studentCount + studentRequiredSlots > 60;
+                                return (
+                                  <label 
+                                    key={f._id} 
+                                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                                      isOversubscribed ? 'opacity-60 bg-red-50/10 border-red-100 cursor-not-allowed' :
+                                      selectedFaculty === f._id ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-200 hover:bg-blue-50/30 cursor-pointer'
+                                    }`}
+                                  >
+                                    <input 
+                                      type="radio" 
+                                      name="faculty" 
+                                      value={f._id} 
+                                      disabled={isOversubscribed}
+                                      checked={selectedFaculty === f._id} 
+                                      onChange={e => setSelectedFaculty(e.target.value)} 
+                                      className="accent-blue-600" 
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center justify-between">
+                                        <p className="font-semibold text-gray-900 text-sm truncate">{f.name}</p>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${f.studentCount >= 50 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-600 border-green-200'}`}>
+                                          {f.studentCount || 0}/60 Students
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-gray-500 truncate mt-0.5">{f.department} • {f.email}</p>
+                                      {isOversubscribed ? (
+                                        <p className="text-[10px] text-red-600 font-semibold mt-1">❌ Oversubscribed (Only {60 - f.studentCount} slots left)</p>
+                                      ) : (
+                                        <p className="text-[10px] text-blue-600 font-semibold mt-1">Available slots after assignment: {60 - f.studentCount - studentRequiredSlots}</p>
+                                      )}
+                                    </div>
+                                    {selectedFaculty === f._id && <CheckCircle className="w-4 h-4 text-blue-500 shrink-0" />}
+                                  </label>
+                                );
+                              })}
+                              {filteredFaculties.length === 0 && (
+                                <p className="text-xs text-gray-400 italic text-center py-4">No matching faculty found.</p>
+                              )}
                             </div>
                           </div>
                         )}
                         <div className="flex gap-3 pt-2">
-                          <button onClick={() => { setActiveModal({ type: null, id: null }); setSelectedFaculty(''); }} className="flex-1 py-2.5 text-sm font-bold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all">Skip for Now</button>
+                          <button onClick={() => { setActiveModal({ type: null, id: null }); setSelectedFaculty(''); setFacSearch(''); }} className="flex-1 py-2.5 text-sm font-bold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all font-sans">Cancel</button>
                           <button onClick={() => assignFaculty(activeModal.id)} disabled={!selectedFaculty} className="flex-1 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/25">Assign Supervisor</button>
                         </div>
                       </div>
@@ -872,51 +896,131 @@ export default function HodDashboard() {
                 );
               })()}
 
-            {/* ═══════════════════════ EXTENSIONS ══════════════════════════ */}
-            {activeTab === 'extensions' && (() => {
-              if (!extensionRequests.length && !loadingExtensions) { fetchExtensions(); }
-              return (
-                <motion.div key="extensions" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="space-y-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Calendar className="w-5 h-5 text-indigo-500" />
-                    <h2 className="text-xl font-extrabold text-gray-900">Deadline Extension Requests</h2>
-                    <button onClick={fetchExtensions} className="ml-auto p-1.5 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-500 transition-all"><RefreshCw className="w-4 h-4"/></button>
-                  </div>
-                  {loadingExtensions ? (
-                    <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent"/></div>
-                  ) : extensionRequests.length === 0 ? (
-                    <div className="text-center py-16 text-gray-400"><Calendar className="w-12 h-12 mx-auto mb-3 opacity-30"/><p className="font-medium">No extension requests at this time.</p></div>
-                  ) : (
-                    <div className="space-y-4">
-                      {extensionRequests.map(req => (
-                        <div key={req._id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col md:flex-row gap-4 items-start">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${req.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' : req.status === 'Rejected' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{req.status}</span>
-                              <span className="text-xs text-gray-400">Deadline: <strong>{req.deadlineId?.title}</strong></span>
-                            </div>
-                            <p className="font-bold text-gray-900 text-sm mb-0.5">{req.studentId?.name} <span className="text-gray-400 font-normal text-xs">— {req.studentId?.branch} {req.studentId?.course}</span></p>
-                            <p className="text-xs text-gray-500 mb-1">Original: {req.deadlineId?.dueDate ? new Date(req.deadlineId.dueDate).toLocaleDateString() : 'N/A'} → Requested: <strong>{new Date(req.requestedDate).toLocaleDateString()}</strong></p>
-                            <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">{req.reason}</p>
-                            {req.documentUrl && <a href={req.documentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline mt-1 inline-block">View Supporting Document →</a>}
-                            {req.remarks && <p className="text-xs text-orange-600 mt-1 font-medium">Remark: {req.remarks}</p>}
+              {/* ════ GLOBAL: APPROVE PROPOSAL MODAL (with unified slot count, skip for now option) ════ */}
+              {activeModal.type === 'approveProposalModal' && activeModal.id && (() => {
+                const proposal = data.pendingProposals.find(p => p._id === activeModal.id) || projects.find(p => p._id === activeModal.id);
+
+                // Filter faculty by search query
+                const filteredFaculties = approvedFacultyList.filter(f => 
+                  f.name.toLowerCase().includes(facSearch.toLowerCase()) ||
+                  f.department.toLowerCase().includes(facSearch.toLowerCase()) ||
+                  f.email.toLowerCase().includes(facSearch.toLowerCase())
+                );
+
+                const studentRequiredSlots = proposal ? (1 + (proposal.teamMembers?.length || 0)) : 1;
+
+                return (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <motion.div initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+                      <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-5">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h2 className="font-bold text-white text-lg">Approve Project Proposal</h2>
+                            <p className="text-purple-100 text-xs mt-0.5">Select a faculty supervisor or approve and assign one later.</p>
                           </div>
-                          {req.status === 'Pending' && (
-                            <div className="flex flex-col gap-2 shrink-0">
-                              <button onClick={() => handleReviewExtension(req._id, 'Approved')} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl transition-all">✓ Approve</button>
-                              <button onClick={() => { const r = prompt('Rejection reason (optional):'); handleReviewExtension(req._id, 'Rejected', r || ''); }} className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition-all">✕ Reject</button>
-                            </div>
-                          )}
+                          <button onClick={() => { setActiveModal({ type: null, id: null }); setSelectedFaculty(''); setFacSearch(''); }} className="text-white/70 hover:text-white transition-colors"><XCircle className="w-5 h-5" /></button>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </motion.div>
-              );
-            })()}
+                      </div>
+                      {proposal && (
+                        <div className="p-5 bg-purple-50/30 border-b border-purple-100 flex flex-col gap-1">
+                          <p className="text-[10px] font-bold text-purple-600 bg-purple-100/50 px-2 py-0.5 rounded-full w-fit self-start mb-1">{proposal.domain}</p>
+                          <p className="font-bold text-gray-900 text-sm leading-tight">{proposal.title}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Leader: {proposal.studentId?.name} ({proposal.studentId?.branch})</p>
+                          <p className="text-[11px] text-indigo-600 font-semibold mt-1">Requires {studentRequiredSlots} workload slots ({studentRequiredSlots} team member{studentRequiredSlots > 1 ? 's' : ''})</p>
+                        </div>
+                      )}
+                      <div className="p-5 space-y-4">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <input 
+                            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:border-purple-500" 
+                            placeholder="Search faculty by name, department, or email..." 
+                            value={facSearch} 
+                            onChange={e => setFacSearch(e.target.value)} 
+                          />
+                        </div>
+                        {approvedFacultyList.length === 0 ? (
+                          <div className="text-center py-6 text-gray-400">
+                            <p className="text-sm font-medium">No approved faculty in your department.</p>
+                            <p className="text-xs mt-1">Add faculty members from the Faculty tab first.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Assign Supervisor (Optional)</label>
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                              {filteredFaculties.map(f => {
+                                const isOversubscribed = f.studentCount + studentRequiredSlots > 60;
+                                return (
+                                  <label 
+                                    key={f._id} 
+                                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                                      isOversubscribed ? 'opacity-60 bg-red-50/10 border-red-100 cursor-not-allowed' :
+                                      selectedFaculty === f._id ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:border-purple-200 hover:bg-purple-50/20 cursor-pointer'
+                                    }`}
+                                  >
+                                    <input 
+                                      type="radio" 
+                                      name="facultyApprove" 
+                                      value={f._id} 
+                                      disabled={isOversubscribed}
+                                      checked={selectedFaculty === f._id} 
+                                      onChange={e => setSelectedFaculty(e.target.value)} 
+                                      className="accent-purple-600" 
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center justify-between">
+                                        <p className="font-semibold text-gray-900 text-sm truncate">{f.name}</p>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${f.studentCount >= 50 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-600 border-green-200'}`}>
+                                          {f.studentCount || 0}/60 Students
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-gray-500 truncate mt-0.5">{f.department} • {f.email}</p>
+                                      {isOversubscribed ? (
+                                        <p className="text-[10px] text-red-600 font-semibold mt-1">❌ Oversubscribed (Only {60 - f.studentCount} slots left)</p>
+                                      ) : (
+                                        <p className="text-[10px] text-purple-600 font-semibold mt-1">Available slots after assignment: {60 - f.studentCount - studentRequiredSlots}</p>
+                                      )}
+                                    </div>
+                                    {selectedFaculty === f._id && <CheckCircle className="w-4 h-4 text-purple-500 shrink-0" />}
+                                  </label>
+                                );
+                              })}
+                              {filteredFaculties.length === 0 && (
+                                <p className="text-xs text-gray-400 italic text-center py-4">No matching faculty found.</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex flex-col gap-2 pt-2">
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => handleApproveProposal(activeModal.id, selectedFaculty)} 
+                              disabled={!selectedFaculty} 
+                              className="flex-1 py-2.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25"
+                            >
+                              Approve & Assign Supervisor
+                            </button>
+                            <button 
+                              onClick={() => handleApproveProposal(activeModal.id, '')} 
+                              className="flex-1 py-2.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition-all"
+                            >
+                              Skip for Now
+                            </button>
+                          </div>
+                          <button 
+                            onClick={() => { setActiveModal({ type: null, id: null }); setSelectedFaculty(''); setFacSearch(''); }} 
+                            className="w-full py-2 text-xs font-semibold text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  </div>
+                );
+              })()}
 
             {/* ═══════════════════════ ANNOUNCEMENTS ══════════════════════════ */}
-
             {activeTab === 'announcements' && (
               <motion.div key="announcements" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="space-y-6">
                 <div className="flex items-center justify-between">

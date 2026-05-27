@@ -4,7 +4,7 @@ import { Hod } from '../models/Hod.model.js';
 import { Admin } from '../models/Admin.model.js';
 import { generateOTP } from '../utils/otp.util.js';
 import { sendEmail } from '../config/nodemailer.js';
-import { otpVerificationEmail } from '../utils/emailTemplates.js';
+import { emailTemplates } from '../utils/emailTemplates.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
@@ -53,8 +53,11 @@ export const registerStudent = async (req, res) => {
       role: 'student', otpHash, otpExpiry, profilePhoto
     });
 
-    const { subject, html } = otpVerificationEmail(name, otp, 'verify');
-    const emailSent = await sendEmail(email, subject, html);
+    const emailSent = await sendEmail(
+      email,
+      'Verify Your Email Address',
+      emailTemplates.otpEmail(name, otp)
+    );
 
     console.log('\x1b[32m[SUCCESS]\x1b[0m Student registered:', email, '| OTP emailed:', emailSent);
     res.status(201).json({ message: 'Student registered successfully. Please verify your email.', emailSent });
@@ -93,8 +96,11 @@ export const registerFaculty = async (req, res) => {
       role: 'faculty', otpHash, otpExpiry, isApproved: false, profilePhoto
     });
 
-    const { subject: fSubject, html: fHtml } = otpVerificationEmail(name, otp, 'verify');
-    const emailSent = await sendEmail(email, fSubject, fHtml);
+    const emailSent = await sendEmail(
+      email,
+      'Verify Your Email Address',
+      emailTemplates.otpEmail(name, otp)
+    );
 
     console.log('\x1b[32m[SUCCESS]\x1b[0m Faculty registered:', email, '| OTP emailed:', emailSent);
     res.status(201).json({ message: 'Faculty registered successfully. Please verify your email.', emailSent });
@@ -225,8 +231,11 @@ export const forgotPassword = async (req, res) => {
     user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    const { subject: resetSubject, html: resetHtml } = otpVerificationEmail(user.name || email, otp, 'reset');
-    await sendEmail(email, resetSubject, resetHtml);
+    await sendEmail(
+      email,
+      'Reset Your Password',
+      emailTemplates.otpEmail(user.name, otp)
+    );
 
     res.status(200).json({ message: 'OTP sent to email.' });
   } catch (error) {

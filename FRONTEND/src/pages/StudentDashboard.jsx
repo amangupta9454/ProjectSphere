@@ -2,40 +2,34 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LogOut, LayoutDashboard, FolderOpen, Upload, LineChart,
-  Bell, CheckCircle, XCircle, Clock, User, BookOpen,
-  FileText, Paperclip, Link2, AlertCircle, RefreshCw,
-  Download, ChevronRight, MessageSquare, TrendingUp, Calendar,
-  Users, Target, Send, Plus, Trash2, Search, CheckSquare, Megaphone, Pin
+  LayoutDashboard, BookOpen, Users, Target, Send, Megaphone, User,
+  Bell, Clock, RefreshCw, CheckCircle, XCircle, FileText, Paperclip,
+  FolderOpen, Calendar, ChevronRight, TrendingUp, AlertTriangle, Play,
+  Volume2, VolumeX, Sparkles, Upload, Info, MessageSquare, Download
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api, { studentAPI } from '../lib/api.js';
-import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
+import api from '../lib/api.js';
 import Sidebar from '../Components/Sidebar';
-import DeadlinePopup from '../Components/DeadlinePopup';
-import ProjectTimeline from '../Components/ProjectTimeline';
 
 const TABS = [
-  { id: 'overview',      label: 'Dashboard',         icon: LayoutDashboard },
-  { id: 'proposal',      label: 'Submit Proposal',    icon: BookOpen },
-  { id: 'supervisor',    label: 'Supervisor',         icon: Users },
-  { id: 'details',       label: 'Project Details',    icon: Target },
-  { id: 'timeline',      label: 'Project Timeline',   icon: TrendingUp },
-  { id: 'submission',    label: 'Submission & Files',  icon: Send },
-  { id: 'announcements', label: 'Announcements',      icon: Megaphone },
-  { id: 'profile',       label: 'My Profile',         icon: User },
+  { id: 'overview',      label: 'Dashboard',        icon: LayoutDashboard },
+  { id: 'proposal',      label: 'Submit Proposal',   icon: BookOpen },
+  { id: 'supervisor',    label: 'Supervisor',        icon: Users },
+  { id: 'details',       label: 'Project Details',   icon: Target },
+  { id: 'submission',    label: 'Submission & Files', icon: Send },
+  { id: 'announcements', label: 'Announcements',     icon: Megaphone },
+  { id: 'profile',       label: 'My Profile',        icon: User },
 ];
 
-
 const STATUS_META = {
-  'Pending HOD Review':         { color: 'yellow',  label: 'Pending HOD Review', step: 1 },
-  'HOD Approved':               { color: 'blue',    label: 'HOD Approved', step: 2 },
-  'Pending Faculty Assignment': { color: 'indigo',  label: 'Pending Faculty Assignment', step: 2 },
-  'Rejected (HOD)':             { color: 'red',     label: 'Rejected by HOD', step: 1 },
-  'Faculty Assigned':           { color: 'indigo',  label: 'Faculty Assigned', step: 3 },
-  'Faculty Accepted':           { color: 'green',   label: 'Faculty Accepted ✓', step: 4 },
-  'Rejected (Faculty)':         { color: 'orange',  label: 'Rejected by Faculty', step: 3 },
-  'Submitted':                  { color: 'purple',  label: 'Project Submitted', step: 5 },
+  'Pending HOD Review': { color: 'yellow', label: 'Pending HOD Review', step: 1 },
+  'Pending Faculty Assignment': { color: 'amber', label: 'Pending Mentor Assignment', step: 2 },
+  'HOD Approved': { color: 'blue', label: 'HOD Approved', step: 2 },
+  'Rejected (HOD)': { color: 'red', label: 'Rejected by HOD', step: 1 },
+  'Faculty Assigned': { color: 'indigo', label: 'Faculty Assigned', step: 3 },
+  'Faculty Accepted': { color: 'green', label: 'Faculty Accepted ✓', step: 4 },
+  'Rejected (Faculty)': { color: 'orange', label: 'Rejected by Faculty', step: 3 },
+  'Submitted': { color: 'purple', label: 'Project Submitted', step: 5 },
 };
 
 const FILE_TYPES = [
@@ -45,55 +39,76 @@ const FILE_TYPES = [
   { value: 'paper', label: 'Research Paper', icon: BookOpen },
 ];
 
+// Helper to synthesize a premium audio notification chime
+const playChime = (soundEnabled) => {
+  if (!soundEnabled) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    // Smooth dual-note chime (D5 to A5)
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880.00, ctx.currentTime + 0.12);
+    
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+    
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+  } catch (e) {
+    console.warn('Audio Context block:', e);
+  }
+};
+
 const StudentDashboard = () => {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [data, setData] = useState({ profile: null, proposal: null, submissions: [], deadlines: [], notifications: [], unreadCount: 0 });
-  const [files, setFiles] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  // Announcements
-  const [announcements, setAnnouncements] = useState([]);
-
-  // Tab 2: Proposal
-  const [proposalForm, setProposalForm] = useState({ title: '', description: '', domain: '', teamSize: 1, teamMembers: [], referenceLinks: '' });
-  const [submitting, setSubmitting] = useState(false);
+  const [activeTab, setActiveTab]       = useState('overview');
+  const [data, setData]                 = useState({ profile: null, proposal: null, submissions: [], deadlines: [], notifications: [], unreadCount: 0 });
+  const [loading, setLoading]           = useState(true);
+  const [files, setFiles]               = useState([]);
   
-  // Tab 3: Supervisor
+  // Extension & Rescheduling State
+  const [extensions, setExtensions]     = useState([]);
+  const [extensionModal, setExtensionModal] = useState({ open: false, deadline: null });
+  const [extForm, setExtForm]           = useState({ requestedDate: '', reason: '', document: null });
+  const [extSubmitting, setExtSubmitting] = useState(false);
+
+  // Timeline State
+  const [timelineStatus, setTimelineStatus] = useState('PROJECT STARTED');
+  const [timelineRemarks, setTimelineRemarks] = useState('');
+  const [timelineSubmitting, setTimelineSubmitting] = useState(false);
+
+  // Smart Popups State
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [reminderPopup, setReminderPopup] = useState({ open: false, deadline: null, type: '' });
+
+  // Proposal & profile state
+  const [proposalForm, setProposalForm] = useState({ title: '', description: '', domain: '', teamSize: 1, teamMembers: [], referenceLinks: '' });
+  const [submitting, setSubmitting]     = useState(false);
   const [availableFaculty, setAvailableFaculty] = useState([]);
   const [facultySearch, setFacultySearch] = useState('');
-  
-  // Tab 4: Targets
-  const [newTarget, setNewTarget] = useState({ title: '', description: '' });
-  
-  // Tab 5: Final
-  const [finalForm, setFinalForm] = useState({ liveLink: '', githubLink: '', linkedinLink: '' });
-
-  // Tab 6: Profile
-  const [profileForm, setProfileForm] = useState({ githubId: '', linkedinId: '', portfolioLink: '' });
-  const [resumeFile, setResumeFile] = useState(null);
+  const [newTarget, setNewTarget]       = useState({ title: '', description: '' });
+  const [finalForm, setFinalForm]       = useState({ liveLink: '', githubLink: '', linkedinLink: '' });
+  const [profileForm, setProfileForm]   = useState({ githubId: '', linkedinId: '', portfolioLink: '' });
+  const [resumeFile, setResumeFile]     = useState(null);
   const [updatingProfile, setUpdatingProfile] = useState(false);
   const resumeRef = useRef(null);
 
-  // Timeline
-  const [timeline, setTimeline] = useState([]);
-  const [timelineLoading, setTimelineLoading] = useState(false);
-
-  // Extension Requests
-  const [extensionRequests, setExtensionRequests] = useState([]);
-  const [showExtensionForm, setShowExtensionForm] = useState(false);
-  const [extensionForm, setExtensionForm] = useState({ deadlineId: '', requestedDate: '', reason: '' });
-  const [extensionDoc, setExtensionDoc] = useState(null);
-  const [submittingExtension, setSubmittingExtension] = useState(false);
-
-  // Deadline popup
-  const [showDeadlinePopup, setShowDeadlinePopup] = useState(true);
-
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading]       = useState(false);
   const [selectedFileType, setSelectedFileType] = useState('document');
-  const [showNotifs, setShowNotifs] = useState(false);
+  const [showNotifs, setShowNotifs]     = useState(false);
   const navigate = useNavigate();
 
   const handleLogout = () => { localStorage.removeItem('user'); navigate('/login'); };
+
+  const fetchExtensions = async () => {
+    try {
+      const res = await api.get('/student/extensions');
+      setExtensions(res.data);
+    } catch {}
+  };
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -117,7 +132,6 @@ const StudentDashboard = () => {
           referenceLinks: (p.referenceLinks || []).join(', ') 
         });
       } else {
-        // Initialize 1 empty member slot if no proposal
         setProposalForm(prev => ({...prev, teamMembers: [{ name: '', email: '', mobileNumber: '', course: 'B.Tech', branch: 'Computer Science', section: 'A' }]}));
       }
 
@@ -131,83 +145,63 @@ const StudentDashboard = () => {
   }, []);
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
-
-  // Load timeline separately
-  const fetchTimeline = useCallback(async () => {
-    setTimelineLoading(true);
-    try {
-      const res = await studentAPI.getTimeline();
-      setTimeline(res.data.timeline || []);
-    } catch (_) {}
-    finally { setTimelineLoading(false); }
-  }, []);
-
-  // Load extension requests
-  const fetchExtensions = useCallback(async () => {
-    try {
-      const res = await studentAPI.getMyExtensionRequests();
-      setExtensionRequests(res.data || []);
-    } catch (_) {}
-  }, []);
-
   useEffect(() => {
-    fetchTimeline();
-    fetchExtensions();
-  }, [fetchTimeline, fetchExtensions]);
-
-  const handleAddTimelineEntry = async ({ milestoneStatus, remarks }) => {
-    try {
-      const res = await studentAPI.addTimelineEntry({ milestoneStatus, remarks });
-      setTimeline(res.data.timeline || []);
-      toast.success('Milestone logged!');
-    } catch (e) {
-      toast.error(e.response?.data?.message || 'Failed to add milestone.');
-    }
-  };
-
-  const handleAddTimelineComment = async (entryId, message) => {
-    try {
-      const res = await studentAPI.addTimelineComment(entryId, message);
-      setTimeline(res.data.timeline || []);
-      toast.success('Comment added!');
-    } catch (e) {
-      toast.error(e.response?.data?.message || 'Failed to add comment.');
-    }
-  };
-
-  const handleRequestExtension = async (e) => {
-    e.preventDefault();
-    if (!extensionForm.deadlineId || !extensionForm.requestedDate || !extensionForm.reason) {
-      toast.error('Please fill all fields.');
-      return;
-    }
-    setSubmittingExtension(true);
-    try {
-      const formData = new FormData();
-      formData.append('deadlineId', extensionForm.deadlineId);
-      formData.append('requestedDate', extensionForm.requestedDate);
-      formData.append('reason', extensionForm.reason);
-      if (extensionDoc) formData.append('document', extensionDoc);
-      await studentAPI.requestExtension(formData);
-      toast.success('Extension request submitted!');
-      setShowExtensionForm(false);
-      setExtensionForm({ deadlineId: '', requestedDate: '', reason: '' });
-      setExtensionDoc(null);
+    if (activeTab === 'details' || activeTab === 'overview') {
       fetchExtensions();
-    } catch (e) {
-      toast.error(e.response?.data?.message || 'Failed to submit request.');
     }
-    setSubmittingExtension(false);
+  }, [activeTab]);
+
+  // Smart Reminder Popup Trigger
+  useEffect(() => {
+    if (data.deadlines && data.deadlines.length > 0) {
+      const now = new Date();
+      // Find the closest active deadline in the future or due today
+      const upcoming = data.deadlines.filter(d => new Date(d.dueDate) >= now);
+      if (upcoming.length === 0) return;
+
+      const closest = upcoming[0];
+      const due = new Date(closest.dueDate);
+      const diffTime = due - now;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      let popupType = '';
+      if (diffDays === 0 || (diffDays > 0 && diffDays <= 1)) {
+        popupType = 'today';
+      } else if (diffDays > 1 && diffDays <= 2) {
+        popupType = 'urgent';
+      } else if (diffDays > 2 && diffDays <= 10) {
+        popupType = 'motivational';
+      }
+
+      if (popupType) {
+        const key = `dismissed_${closest._id}_${popupType}`;
+        const isDismissed = localStorage.getItem(key);
+        if (!isDismissed) {
+          // Play Synthesized sound alert chimes
+          setTimeout(() => {
+            playChime(soundEnabled);
+          }, 600);
+          setReminderPopup({ open: true, deadline: closest, type: popupType });
+        }
+      }
+    }
+  }, [data.deadlines, soundEnabled]);
+
+  const dismissPopup = () => {
+    if (reminderPopup.deadline) {
+      const key = `dismissed_${reminderPopup.deadline._id}_${reminderPopup.type}`;
+      localStorage.setItem(key, 'true');
+    }
+    setReminderPopup({ open: false, deadline: null, type: '' });
   };
 
-  // Tab 2: Form Handling
   const handleTeamSizeChange = (e) => {
     const size = parseInt(e.target.value);
     setProposalForm(prev => {
       let members = [...prev.teamMembers];
       if (size > members.length) {
         for (let i = members.length; i < size; i++) {
-          members.push({ name: '', email: '', mobileNumber: '', course: prev.teamMembers[0]?.course || 'B.Tech', branch: prev.teamMembers[0]?.branch || 'CSE', section: prev.teamMembers[0]?.section || 'A' });
+          members.push({ name: '', email: '', mobileNumber: '', course: prev.teamMembers[0]?.course || 'B.Tech', branch: prev.teamMembers[0]?.branch || 'Computer Science', section: prev.teamMembers[0]?.section || 'A' });
         }
       } else if (size < members.length) {
         members = members.slice(0, size);
@@ -239,7 +233,7 @@ const StudentDashboard = () => {
 
       if (data.proposal && (data.proposal.status === 'Rejected (HOD)' || data.proposal.status === 'Rejected (Faculty)')) {
         await api.put('/student/proposal', payload);
-        toast.success('Proposal resubmitted for review!');
+        toast.success('Proposal resubmitted for HOD review!');
       } else {
         await api.post('/student/proposal', payload);
         toast.success('Proposal submitted successfully!');
@@ -251,7 +245,6 @@ const StudentDashboard = () => {
     } finally { setSubmitting(false); }
   };
 
-  // Tab 3: Supervisor
   const handleRequestSupervisor = async (facultyId) => {
     try {
       await api.post(`/student/faculty/request/${facultyId}`);
@@ -262,7 +255,6 @@ const StudentDashboard = () => {
     }
   };
 
-  // Tab 4: Targets
   const handleAddTarget = async (e) => {
     e.preventDefault();
     try {
@@ -284,7 +276,6 @@ const StudentDashboard = () => {
     }
   };
 
-  // Tab 5: Final Submission
   const handleFinalSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -335,6 +326,48 @@ const StudentDashboard = () => {
     }
   };
 
+  const handleTimelineSubmit = async (e) => {
+    e.preventDefault();
+    setTimelineSubmitting(true);
+    try {
+      await api.post('/student/proposal/timeline', { status: timelineStatus, remarks: timelineRemarks });
+      toast.success('Progress timeline updated successfully!');
+      setTimelineRemarks('');
+      fetchDashboard();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update timeline.');
+    } finally {
+      setTimelineSubmitting(false);
+    }
+  };
+
+  const handleExtensionSubmit = async (e) => {
+    e.preventDefault();
+    if (!extForm.requestedDate || !extForm.reason || extForm.reason.length < 20) {
+      return toast.error('Please enter a target date and details (min 20 chars)');
+    }
+    setExtSubmitting(true);
+    const formData = new FormData();
+    formData.append('deadlineId', extensionModal.deadline._id);
+    formData.append('requestedDate', extForm.requestedDate);
+    formData.append('reason', extForm.reason);
+    if (extForm.document) {
+      formData.append('document', extForm.document);
+    }
+    
+    try {
+      await api.post('/student/deadlines/extension', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success('Extension request submitted to your supervisor!');
+      setExtensionModal({ open: false, deadline: null });
+      setExtForm({ requestedDate: '', reason: '', document: null });
+      fetchExtensions();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to submit request.');
+    } finally {
+      setExtSubmitting(false);
+    }
+  };
+
   const markAllRead = async () => {
     try {
       await api.put('/notifications/read-all');
@@ -343,18 +376,7 @@ const StudentDashboard = () => {
   };
 
   const proposal = data.proposal;
-  const statusMeta = proposal ? (STATUS_META[proposal.status] || {}) : {};
-
-  const targetStats = proposal?.targets?.reduce((acc, t) => {
-    acc[t.status] = (acc[t.status] || 0) + 1;
-    return acc;
-  }, {}) || {};
-
-  const chartData = [
-    { name: 'Completed', value: targetStats['Completed'] || 0, color: '#10B981' },
-    { name: 'Ongoing', value: targetStats['Ongoing'] || 0, color: '#3B82F6' },
-    { name: 'Pending', value: targetStats['Pending'] || 0, color: '#F59E0B' },
-  ].filter(d => d.value > 0);
+  const statusMeta = proposal ? (STATUS_META[proposal.status] || { color: 'slate', label: proposal.status, step: 1 }) : {};
 
   if (loading) return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -364,14 +386,6 @@ const StudentDashboard = () => {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans">
-      {/* Smart Deadline Popup */}
-      {showDeadlinePopup && data.deadlines?.length > 0 && (
-        <DeadlinePopup
-          deadlines={data.deadlines}
-          onDismiss={() => setShowDeadlinePopup(false)}
-        />
-      )}
-
       <Sidebar
         navItems={TABS}
         user={data.profile}
@@ -389,6 +403,10 @@ const StudentDashboard = () => {
             <p className="text-xs text-gray-400 font-medium">Student Interface</p>
           </div>
           <div className="flex items-center gap-3">
+            {/* Sound Toggle */}
+            <button onClick={() => setSoundEnabled(!soundEnabled)} title={soundEnabled ? 'Disable Sounds' : 'Enable Sounds'} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl border border-gray-200 transition-all">
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
             <div className="relative">
               <button onClick={() => setShowNotifs(p => !p)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl border border-gray-200 transition-all">
                 <Bell className="w-4 h-4" />
@@ -429,7 +447,7 @@ const StudentDashboard = () => {
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   {[
                     { label: 'Applied', val: proposal ? 1 : 0, color: 'blue' },
-                    { label: 'Approved', val: proposal?.status === 'HOD Approved' || proposal?.status === 'Faculty Assigned' || proposal?.status === 'Faculty Accepted' || proposal?.status === 'Submitted' ? 1 : 0, color: 'green' },
+                    { label: 'Approved', val: ['HOD Approved', 'Pending Faculty Assignment', 'Faculty Assigned', 'Faculty Accepted', 'Submitted'].includes(proposal?.status) ? 1 : 0, color: 'green' },
                     { label: 'Pending', val: proposal?.status === 'Pending HOD Review' ? 1 : 0, color: 'yellow' },
                     { label: 'Rejected', val: proposal?.status?.includes('Reject') ? 1 : 0, color: 'red' },
                     { label: 'Ongoing', val: proposal?.status === 'Faculty Accepted' ? 1 : 0, color: 'indigo' },
@@ -448,7 +466,7 @@ const StudentDashboard = () => {
                       <div className={`absolute top-0 right-0 w-32 h-32 blur-3xl opacity-20 -mr-10 -mt-10 rounded-full ${proposal?.status?.includes('Reject') ? 'bg-red-500' : proposal?.status === 'Faculty Accepted' ? 'bg-green-500' : 'bg-blue-500'}`}></div>
                       
                       <div className="relative z-10 flex items-start justify-between flex-wrap gap-4">
-                        <div>
+                        <div className="w-full">
                           <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Target className="w-4 h-4"/> Current Project Status</p>
                           {!proposal ? (
                             <>
@@ -461,9 +479,9 @@ const StudentDashboard = () => {
                           ) : (
                             <>
                               <h2 className="text-2xl font-extrabold text-gray-900 leading-tight">{proposal.title}</h2>
-                              <div className="flex gap-2 mt-2">
+                              <div className="flex flex-wrap gap-2 mt-2">
                                 <span className="text-xs font-bold bg-gray-100 text-gray-600 px-2.5 py-1 rounded-md">{proposal.department || 'N/A'}</span>
-                                <span className="text-xs font-bold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-md">Team: {proposal.teamMembers?.length || 0}</span>
+                                <span className="text-xs font-bold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-md">Team Size: {proposal.teamMembers?.length + 1 || 1}</span>
                                 {proposal.assignedFaculty && <span className="text-xs font-bold bg-green-50 text-green-700 px-2.5 py-1 rounded-md">Supervisor: {proposal.assignedFaculty.name}</span>}
                               </div>
                               <div className={`mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border shadow-sm
@@ -472,7 +490,7 @@ const StudentDashboard = () => {
                                   statusMeta.color === 'blue' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                                   'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
                                 {proposal.status.includes('Accepted') || proposal.status === 'Submitted' ? <CheckCircle className="w-4 h-4" /> : proposal.status.includes('Rejected') ? <XCircle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-                                {proposal.status}
+                                {statusMeta.label}
                               </div>
                             </>
                           )}
@@ -499,7 +517,7 @@ const StudentDashboard = () => {
                     )}
                   </div>
 
-                  {/* Right Col: Deadlines */}
+                  {/* Right Col: Deadlines & Stepper */}
                   <div className="space-y-6">
                     <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
                       <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-purple-500" /> Upcoming Deadlines</h3>
@@ -507,17 +525,30 @@ const StudentDashboard = () => {
                         ? <div className="py-6 text-center text-sm text-gray-400 font-medium">No deadlines mapped.<br/>Enjoy your free time!</div>
                         : <div className="space-y-3">
                           {data.deadlines.map(d => {
-                            const due = new Date(d.dueDate);
-                            const diffDays = Math.ceil((due - new Date()) / (1000 * 60 * 60 * 24));
+                            // Support extended deadline overrides dynamically
+                            const extMatch = proposal?.extendedDeadlines?.find(ed => ed.deadlineId === d._id);
+                            const finalDueDate = extMatch ? new Date(extMatch.extendedDate) : new Date(d.dueDate);
+                            const diffDays = Math.ceil((finalDueDate - new Date()) / (1000 * 60 * 60 * 24));
+                            
                             return (
-                              <div key={d._id} className={`flex justify-between items-center p-3.5 rounded-2xl border ${diffDays <= 3 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
-                                <div>
-                                  <p className={`text-sm font-bold ${diffDays <= 3 ? 'text-red-700' : 'text-gray-900'}`}>{d.title}</p>
-                                  <p className="text-[11px] font-medium text-gray-400 mt-0.5 flex items-center gap-1"><Clock className="w-3 h-3"/> {due.toLocaleDateString()}</p>
+                              <div key={d._id} className={`flex flex-col gap-2 p-3.5 rounded-2xl border ${diffDays <= 3 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+                                <div className="flex justify-between items-center w-full">
+                                  <div>
+                                    <p className={`text-sm font-bold ${diffDays <= 3 ? 'text-red-700' : 'text-gray-900'}`}>{d.title}</p>
+                                    <p className="text-[11px] font-medium text-gray-400 mt-0.5 flex items-center gap-1">
+                                      <Clock className="w-3 h-3"/> {finalDueDate.toLocaleDateString()}
+                                      {extMatch && <span className="ml-1 bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-black text-[9px] uppercase">Extended</span>}
+                                    </p>
+                                  </div>
+                                  <span className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-md tracking-wider ${diffDays <= 3 ? 'bg-red-100 text-red-600' : 'bg-white shadow-sm text-gray-600 border border-gray-200'}`}>
+                                    {diffDays > 0 ? `${diffDays}d left` : 'Overdue'}
+                                  </span>
                                 </div>
-                                <span className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-md tracking-wider ${diffDays <= 3 ? 'bg-red-100 text-red-600' : 'bg-white shadow-sm text-gray-600 border border-gray-200'}`}>
-                                  {diffDays > 0 ? `${diffDays}d left` : 'Overdue'}
-                                </span>
+                                {proposal && (
+                                  <button onClick={() => setExtensionModal({ open: true, deadline: d })} className="text-[10px] font-bold text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 py-1 px-2.5 rounded-lg border border-purple-100 self-end transition-all">
+                                    Request Extension
+                                  </button>
+                                )}
                               </div>
                             );
                           })}
@@ -525,24 +556,24 @@ const StudentDashboard = () => {
                       }
                     </div>
 
-                    {/* Project Status Stepper */}
+                    {/* Stepper */}
                     {proposal && (
                        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-                         <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Target className="w-4 h-4 text-emerald-500" /> Project Progress</h3>
+                         <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Target className="w-4 h-4 text-emerald-500" /> Project Stepper</h3>
                          {(() => {
-                           const steps=['Pending HOD Review','HOD Approved','Faculty Assigned','Faculty Accepted','Submitted'];
-                           const labels=['HOD Review','HOD OK','Assigned','Active','Submitted'];
+                           const steps=['Pending HOD Review','Pending Faculty Assignment','Faculty Assigned','Faculty Accepted','Submitted'];
+                           const labels=['HOD Review','HOD Apprv','Assigned','Active','Submitted'];
                            const rejected=proposal.status.includes('Rejected');
                            const idx=rejected?0:Math.max(steps.indexOf(proposal.status),0);
                            return(
                              <div className="flex items-center gap-1">
                                {steps.map((s,i)=>(
                                  <React.Fragment key={s}>
-                                   <div className={`flex flex-col items-center text-center min-w-[52px] ${i<=idx&&!rejected?'opacity-100':'opacity-30'}`}>
-                                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 ${i<idx?'bg-green-50 border-green-400 text-green-700':i===idx&&!rejected?'bg-blue-50 border-blue-500 ring-4 ring-blue-100':'bg-gray-50 border-gray-200'}`}>
+                                   <div className={`flex flex-col items-center text-center min-w-[50px] ${i<=idx&&!rejected?'opacity-100':'opacity-30'}`}>
+                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 ${i<idx?'bg-green-50 border-green-400 text-green-700':i===idx&&!rejected?'bg-blue-50 border-blue-500 ring-4 ring-blue-100 text-blue-700':'bg-gray-50 border-gray-200'}`}>
                                        {i<idx?'✓':i+1}
                                      </div>
-                                     <p className="text-[9px] font-bold text-gray-600 mt-1">{labels[i]}</p>
+                                     <p className="text-[9px] font-black text-gray-500 mt-1">{labels[i]}</p>
                                    </div>
                                    {i<4&&<div className={`flex-1 h-0.5 min-w-[8px] ${i<idx&&!rejected?'bg-green-400':'bg-gray-200'}`} />}
                                  </React.Fragment>
@@ -564,7 +595,7 @@ const StudentDashboard = () => {
                    <div className="bg-blue-50 border border-blue-200 rounded-3xl p-8 flex flex-col items-center justify-center text-center">
                      <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4"><CheckCircle className="w-8 h-8 text-blue-600"/></div>
                      <h2 className="text-xl font-extrabold text-blue-900">Proposal Already Submitted</h2>
-                     <p className="text-blue-700 mt-2 max-w-md">Your proposal is currently in the <strong>{proposal.status}</strong> stage. You cannot edit it unless it gets rejected. Head to the Project Details tab to view it.</p>
+                     <p className="text-blue-700 mt-2 max-w-md">Your proposal is currently in the <strong>{proposal.status}</strong> stage. You cannot edit it unless HOD or Faculty requests changes. Head to the Project Details tab to view it.</p>
                      <button onClick={() => setActiveTab('details')} className="mt-6 px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700 transition">View Details</button>
                    </div>
                 ) : (
@@ -581,8 +612,8 @@ const StudentDashboard = () => {
                     </div>
 
                     {proposal && (
-                      <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5"/>
+                      <div className="p-4 bg-orange-50 border border-orange-200 rounded-2xl flex items-start gap-3 mb-6">
+                        <AlertTriangle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5"/>
                         <div>
                           <p className="text-sm text-orange-800 font-bold mb-1">Previous Rejection Note</p>
                           <p className="text-sm text-orange-700 font-medium">{proposal.status === 'Rejected (HOD)' ? proposal.hodReview?.comment : proposal.facultyReview?.comment}</p>
@@ -688,7 +719,6 @@ const StudentDashboard = () => {
             {/* ── 3. SUPERVISOR ── */}
             {activeTab === 'supervisor' && (
               <div className="space-y-6 max-w-5xl mx-auto">
-                {/* Assigned Supervisor */}
                 <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm relative overflow-hidden">
                    <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-bl-full -z-10"></div>
                    <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><User className="w-4 h-4 text-indigo-500" /> Assigned Supervisor</h3>
@@ -701,7 +731,7 @@ const StudentDashboard = () => {
                           <p className="text-2xl font-extrabold text-gray-900">{proposal.assignedFaculty.name}</p>
                           <p className="text-sm font-bold text-gray-500 mt-1">{proposal.assignedFaculty.department} Dept. {proposal.assignedFaculty.designation && `• ${proposal.assignedFaculty.designation}`}</p>
                           <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-3">
-                            <a href={`mailto:${proposal.assignedFaculty.email}`} className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 text-sm font-bold rounded-xl hover:bg-indigo-100 transition"><Link2 className="w-4 h-4" /> {proposal.assignedFaculty.email}</a>
+                            <a href={`mailto:${proposal.assignedFaculty.email}`} className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 text-sm font-bold rounded-xl hover:bg-indigo-100 transition"><Mail className="w-4 h-4" /> {proposal.assignedFaculty.email}</a>
                           </div>
                         </div>
                      </div>
@@ -709,56 +739,48 @@ const StudentDashboard = () => {
                      <div className="flex flex-col items-center justify-center py-8 text-center bg-gray-50 border border-dashed border-gray-300 rounded-2xl">
                        <User className="w-12 h-12 text-gray-300 mb-3" />
                        <h3 className="text-lg font-bold text-gray-700">No Supervisor Assigned</h3>
-                       <p className="text-sm font-medium text-gray-500 mt-1 max-w-sm">You haven't been assigned a supervisor yet. Browse available faculty below and send a request.</p>
+                       <p className="text-sm font-medium text-gray-500 mt-1 max-w-sm">No supervisor has been assigned to your approved project proposal yet. The HOD will assign one shortly.</p>
                      </div>
                    )}
                 </div>
 
-                {/* Available Supervisors */}
                 <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                    <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest flex items-center gap-2"><Search className="w-4 h-4 text-blue-500" /> Available Supervisors</h3>
+                    <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest flex items-center gap-2"><Search className="w-4 h-4 text-blue-500" /> Department Supervisors</h3>
                     <div className="relative w-full sm:w-64">
                       <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                      <input type="text" placeholder="Search by name or dept..." className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={facultySearch} onChange={e => setFacultySearch(e.target.value)} />
+                      <input type="text" placeholder="Search by name..." className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={facultySearch} onChange={e => setFacultySearch(e.target.value)} />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {availableFaculty.filter(f => f.name.toLowerCase().includes(facultySearch.toLowerCase()) || f.department.toLowerCase().includes(facultySearch.toLowerCase())).map(faculty => (
-                      <div key={faculty._id} className="p-5 border border-gray-100 rounded-2xl hover:shadow-md transition-all bg-white relative overflow-hidden group">
+                    {availableFaculty.filter(f => f.name.toLowerCase().includes(facultySearch.toLowerCase())).map(faculty => (
+                      <div key={faculty._id} className="p-5 border border-gray-100 rounded-2xl bg-white relative overflow-hidden group shadow-sm hover:shadow-md transition-all">
                         <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center mb-4">
                           <span className="text-lg font-extrabold text-blue-700">{faculty.name[0]}</span>
                         </div>
                         <h4 className="font-extrabold text-gray-900 leading-tight">{faculty.name}</h4>
                         <p className="text-xs font-bold text-gray-500 mb-2">{faculty.department} • {faculty.designation || 'Faculty'}</p>
-                        <p className="text-[11px] font-medium text-gray-400 line-clamp-2">{faculty.specialization || 'General Specialization'}</p>
+                        <p className="text-[11px] font-medium text-gray-400 line-clamp-2">{faculty.specialization || 'Supervise project milestones and thesis reviews.'}</p>
                         
                         <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
-                          <span className="text-xs font-bold text-gray-500"><span className="text-blue-600">{faculty.activeProjectsCount}</span> / {faculty.maxStudents || 5} slots</span>
-                          <button 
-                            onClick={() => handleRequestSupervisor(faculty._id)} 
-                            disabled={!faculty.isAvailable || !!proposal?.assignedFaculty || proposal?.supervisorRequested}
-                            className="px-3 py-1.5 text-xs font-bold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm">
-                            Request
-                          </button>
+                          <span className="text-xs font-bold text-gray-500">Supervising: <span className="text-blue-600">{faculty.activeProjectsCount}</span> students</span>
                         </div>
                       </div>
                     ))}
-                    {availableFaculty.length === 0 && <div className="col-span-full py-10 text-center text-gray-400 font-medium">No available supervisors found.</div>}
+                    {availableFaculty.length === 0 && <div className="col-span-full py-10 text-center text-gray-400 font-medium">No department supervisors available.</div>}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* ── 4. PROJECT DETAILS & STATUS ── */}
+            {/* ── 4. PROJECT DETAILS & TIMELINE ── */}
             {activeTab === 'details' && (
               <div className="space-y-6 max-w-5xl mx-auto">
                 {!proposal ? (
                   <div className="py-12 text-center text-gray-400 bg-white rounded-3xl border border-gray-100 font-medium">Please submit a proposal first.</div>
                 ) : (
                   <>
-                    {/* Proposal Info */}
                     <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                        <div className="flex justify-between items-start mb-4 flex-wrap gap-3">
                          <div>
@@ -775,16 +797,107 @@ const StudentDashboard = () => {
                        )}
                     </div>
 
+                    {/* Interactive Real-Time Progress Timeline Updates */}
+                    {['Faculty Accepted', 'Submitted'].includes(proposal.status) && (
+                      <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                        <h3 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-amber-500" /> Log Real-Time Progress Update
+                        </h3>
+                        <form onSubmit={handleTimelineSubmit} className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="md:col-span-1">
+                              <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">Progress Status *</label>
+                              <select className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={timelineStatus} onChange={e => setTimelineStatus(e.target.value)}>
+                                <option value="PROJECT STARTED">PROJECT STARTED (20%)</option>
+                                <option value="PROTOTYPE CREATED">PROTOTYPE CREATED (50%)</option>
+                                <option value="REPORT PREPARED">REPORT PREPARED (80%)</option>
+                                <option value="PROJECT COMPLETE">PROJECT COMPLETE (95%)</option>
+                                <option value="PROJECT SUBMITTED">PROJECT SUBMITTED (100%)</option>
+                              </select>
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">Optional Remarks / Comments</label>
+                              <input type="text" placeholder="Explain what milestones were achieved..." className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={timelineRemarks} onChange={e => setTimelineRemarks(e.target.value)} />
+                            </div>
+                          </div>
+                          <button type="submit" disabled={timelineSubmitting} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center gap-2">
+                            {timelineSubmitting ? 'Posting...' : <><Sparkles className="w-3.5 h-3.5" /> Post Progress Update</>}
+                          </button>
+                        </form>
+
+                        {/* Renders chronological timeline updates */}
+                        <div className="mt-8 pt-8 border-t border-gray-100">
+                          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Milestone Progress Logs</h4>
+                          {proposal.timeline && proposal.timeline.length > 0 ? (
+                            <div className="relative border-l border-gray-200 ml-4 space-y-6">
+                              {[...proposal.timeline].reverse().map((t, idx) => (
+                                <div key={idx} className="relative pl-6">
+                                  <div className="absolute -left-2 top-1.5 w-4 h-4 rounded-full border-2 border-blue-500 bg-white shadow-sm flex items-center justify-center">
+                                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                                  </div>
+                                  <div>
+                                    <span className="inline-block bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded text-[10px] uppercase border border-blue-100">{t.status}</span>
+                                    <span className="text-[10px] text-gray-400 ml-2">{new Date(t.timestamp).toLocaleString()}</span>
+                                    {t.remarks && <p className="text-xs text-gray-700 mt-1 font-medium bg-gray-50 p-2.5 rounded-xl border border-gray-100">{t.remarks}</p>}
+                                    {t.facultyComment && (
+                                      <div className="mt-2 p-2.5 bg-green-50 border border-green-100 rounded-xl text-xs text-green-800 flex items-start gap-2">
+                                        <MessageSquare className="w-3.5 h-3.5 text-green-600 shrink-0 mt-0.5" />
+                                        <p><strong>Supervisor Feedback:</strong> {t.facultyComment}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400 italic">No milestone updates posted yet. Use the fields above to post progress updates.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Deadline Extension History */}
+                    {proposal && (
+                      <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                        <h3 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Clock className="w-4 h-4 text-purple-500" /> Deadline Extension Requests</h3>
+                        <div className="space-y-3">
+                          {extensions.length === 0 ? (
+                            <p className="text-xs text-gray-400 italic">No extension requests logged. You can request extensions next to any deadline listed in the sidebar / upcoming panel.</p>
+                          ) : (
+                            extensions.map(req => (
+                              <div key={req._id} className="p-4 border border-gray-100 rounded-2xl flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                                <div>
+                                  <p className="text-sm font-bold text-gray-900">{req.deadlineId?.title || 'Milestone'}</p>
+                                  <p className="text-xs text-gray-500">Requested Extension: <span className="font-semibold">{new Date(req.requestedDate).toLocaleDateString()}</span></p>
+                                  <p className="text-xs text-gray-400 mt-1">Reason: "{req.reason}"</p>
+                                  {req.documentUrl && <a href={req.documentUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 font-bold hover:underline flex items-center gap-1 mt-1"><Download className="w-3 h-3" /> View Proof Document</a>}
+                                </div>
+                                <div className="flex flex-col items-end gap-1.5">
+                                  <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md tracking-wider border
+                                    ${req.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' :
+                                      req.status === 'Rejected' ? 'bg-red-50 text-red-600 border-red-200' :
+                                      'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
+                                    {req.status}
+                                  </span>
+                                  {req.remarks && <p className="text-[11px] text-gray-600 italic">Remarks: {req.remarks}</p>}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Status Timeline */}
                     <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                       <h3 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-blue-500" /> Status Timeline</h3>
                       <div className="space-y-3">
                         {[
                           { status: 'Pending HOD Review', label: 'Proposal Submitted', icon: '📝', done: true, timestamp: proposal.createdAt, note: null },
-                          { status: 'HOD Approved',       label: 'HOD Review', icon: '🏛️', done: ['HOD Approved','Faculty Assigned','Faculty Accepted','Submitted'].includes(proposal.status), rejected: proposal.status === 'Rejected (HOD)', timestamp: proposal.hodReview?.reviewedAt, note: proposal.hodReview?.comment },
-                          { status: 'Faculty Assigned',   label: 'Faculty Assigned', icon: '👨‍🏫', done: ['Faculty Assigned','Faculty Accepted','Submitted'].includes(proposal.status), timestamp: null, note: proposal.assignedFaculty ? `Assigned: ${proposal.assignedFaculty.name}` : null },
-                          { status: 'Faculty Accepted',   label: 'Faculty Review', icon: '✅', done: ['Faculty Accepted','Submitted'].includes(proposal.status), rejected: proposal.status === 'Rejected (Faculty)', timestamp: proposal.facultyReview?.reviewedAt, note: proposal.facultyReview?.comment },
-                          { status: 'Submitted',          label: 'Final Submitted', icon: '🏁', done: proposal.status === 'Submitted', timestamp: proposal.finalSubmission?.submittedAt, note: null },
+                          { status: 'Pending Faculty Assignment', label: 'HOD Review Approved', icon: '🏛️', done: ['Pending Faculty Assignment','Faculty Assigned','Faculty Accepted','Submitted'].includes(proposal.status), rejected: proposal.status === 'Rejected (HOD)', timestamp: proposal.hodReview?.reviewedAt, note: proposal.hodReview?.comment },
+                          { status: 'Faculty Assigned',   label: 'Faculty Supervisor Assigned', icon: '👨‍🏫', done: ['Faculty Assigned','Faculty Accepted','Submitted'].includes(proposal.status), timestamp: null, note: proposal.assignedFaculty ? `Assigned Mentor: ${proposal.assignedFaculty.name}` : null },
+                          { status: 'Faculty Accepted',   label: 'Faculty Mentor Accepted', icon: '✅', done: ['Faculty Accepted','Submitted'].includes(proposal.status), rejected: proposal.status === 'Rejected (Faculty)', timestamp: proposal.facultyReview?.reviewedAt, note: proposal.facultyReview?.comment },
+                          { status: 'Submitted',          label: 'Final Approved & Submitted', icon: '🏁', done: proposal.status === 'Submitted', timestamp: proposal.finalSubmission?.submittedAt, note: null },
                         ].map((step, i) => (
                           <div key={i} className={`flex items-start gap-4 p-4 rounded-2xl border ${
                             step.rejected ? 'bg-red-50 border-red-200' : step.done ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200 opacity-50'
@@ -811,31 +924,9 @@ const StudentDashboard = () => {
                             <div key={i} className="flex items-center gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-100">
                               <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center text-xl font-extrabold text-indigo-700 shrink-0">{m.name?.[0]?.toUpperCase() || '?'}</div>
                               <div className="min-w-0 flex-1">
-                                <p className="font-bold text-gray-900 truncate">{m.name}</p>
-                                <p className="text-xs text-gray-500 truncate">{m.email}</p>
-                                <div className="flex gap-2 mt-1.5 flex-wrap">
-                                  {m.course && <span className="text-[10px] font-bold bg-white border border-gray-200 text-gray-600 px-2 py-0.5 rounded-md">{m.course}</span>}
-                                  {m.branch && <span className="text-[10px] font-bold bg-blue-50 border border-blue-100 text-blue-700 px-2 py-0.5 rounded-md">{m.branch}</span>}
-                                  {m.section && <span className="text-[10px] font-bold bg-indigo-50 border border-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md">Sec {m.section}</span>}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Faculty Feedback */}
-                    {proposal.facultyFeedback?.length > 0 && (
-                      <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
-                        <h3 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-5 flex items-center gap-2"><MessageSquare className="w-4 h-4 text-indigo-500" /> Supervisor Feedback</h3>
-                        <div className="space-y-3">
-                          {[...proposal.facultyFeedback].reverse().map((f, i) => (
-                            <div key={i} className="flex gap-4 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
-                              <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0">{proposal.assignedFaculty?.name?.[0] || 'F'}</div>
-                              <div>
-                                <p className="text-sm text-gray-800 font-medium leading-relaxed">{f.message}</p>
-                                <p className="text-xs text-gray-400 mt-2">{new Date(f.addedAt).toLocaleString()}</p>
+                                <p className="font-bold text-gray-900 text-sm truncate">{m.name}</p>
+                                <p className="text-xs text-gray-400 truncate mt-0.5">{m.email}</p>
+                                <p className="text-xs text-gray-500 mt-1 font-semibold">{m.course} — {m.branch} Yr{proposal.studentId?.year} Sec-{m.section}</p>
                               </div>
                             </div>
                           ))}
@@ -850,338 +941,271 @@ const StudentDashboard = () => {
             {/* ── 5. SUBMISSION & FILES ── */}
             {activeTab === 'submission' && (
               <div className="space-y-6 max-w-5xl mx-auto">
-                 <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-purple-50 to-blue-50 rounded-bl-full -z-10"></div>
-                    <div className="flex items-center gap-3 mb-8">
-                      <div className="p-3 bg-purple-100 rounded-xl text-purple-600 shadow-sm"><Send className="w-6 h-6"/></div>
-                      <div>
-                        <h2 className="text-2xl font-extrabold text-gray-900">Final Submission & Project Files</h2>
-                        <p className="text-sm font-medium text-gray-500 mt-1">Submit your final project links and upload all necessary documents in one place.</p>
+                {!proposal ? (
+                  <div className="py-12 text-center text-gray-400 bg-white rounded-3xl border border-gray-100 font-medium">Please submit a proposal first.</div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1.8fr] gap-8">
+                    {/* File Upload Form */}
+                    <div className="space-y-6">
+                      <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+                        <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Upload className="w-4 h-4 text-blue-500" /> Upload Deliverable</h3>
+                        {['Rejected (HOD)', 'Rejected (Faculty)'].includes(proposal.status) ? (
+                          <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 font-medium leading-relaxed">
+                             ❌ Cannot upload files. Your project proposal was rejected/requires revisions.
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            <div>
+                              <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">File Type *</label>
+                              <select className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none" value={selectedFileType} onChange={e => setSelectedFileType(e.target.value)}>
+                                {FILE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                              </select>
+                            </div>
+                            <div className="border-2 border-dashed border-gray-200 rounded-2xl p-6 text-center cursor-pointer hover:border-blue-500 transition relative">
+                              <input type="file" required onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={uploading}/>
+                              <div className="space-y-2">
+                                <Upload className="w-10 h-10 text-gray-400 mx-auto" />
+                                <p className="text-sm font-bold text-gray-900">{uploading ? 'Uploading...' : 'Choose deliverables to upload'}</p>
+                                <p className="text-xs text-gray-400">PDF, PPTX, Word, or ZIP up to 50MB</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
 
-                    {!proposal || !['Faculty Accepted', 'Submitted'].includes(proposal.status) ? (
-                      <div className="py-10 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                        <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-3"/>
-                        <p className="text-sm font-bold text-gray-700">Submission Locked</p>
-                        <p className="text-xs font-medium text-gray-500 mt-1">Your project must be "Faculty Accepted" to make final submissions and upload files.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        {/* Left Column: Link Submission */}
-                        <div>
-                          <h3 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Link2 className="w-4 h-4 text-purple-500"/> Project Links</h3>
-                          {proposal?.status === 'Submitted' && (
-                            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-xs font-bold flex items-center gap-2">
-                              <CheckCircle className="w-4 h-4"/> Links officially submitted!
-                            </div>
-                          )}
-                          <form onSubmit={handleFinalSubmit} className="space-y-5">
+                      {/* Final Submission Links */}
+                      {proposal.status === 'Faculty Accepted' && (
+                        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+                          <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Send className="w-4 h-4 text-green-500" /> Final Project Submission</h3>
+                          <form onSubmit={handleFinalSubmit} className="space-y-4">
                             <div>
-                              <label className="text-xs font-bold text-gray-700 mb-1.5 block">Live Application Link <span className="text-red-400">*</span></label>
-                              <input required type="url" className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-purple-500" placeholder="https://myproject.vercel.app" value={finalForm.liveLink} onChange={e => setFinalForm({...finalForm, liveLink: e.target.value})} disabled={proposal.status === 'Submitted' && proposal.finalSubmission?.status !== 'Rejected'}/>
+                              <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Live Prototype Link</label>
+                              <input type="url" placeholder="https://..." className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm" value={finalForm.liveLink} onChange={e => setFinalForm({...finalForm, liveLink: e.target.value})} />
                             </div>
                             <div>
-                              <label className="text-xs font-bold text-gray-700 mb-1.5 block">GitHub Repository <span className="text-red-400">*</span></label>
-                              <input required type="url" className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-purple-500" placeholder="https://github.com/user/repo" value={finalForm.githubLink} onChange={e => setFinalForm({...finalForm, githubLink: e.target.value})} disabled={proposal.status === 'Submitted'}/>
+                              <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">GitHub Repository Link *</label>
+                              <input type="url" required placeholder="https://github.com/..." className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm" value={finalForm.githubLink} onChange={e => setFinalForm({...finalForm, githubLink: e.target.value})} />
                             </div>
                             <div>
-                              <label className="text-xs font-bold text-gray-700 mb-1.5 block">LinkedIn Showcase (Optional)</label>
-                              <input type="url" className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-purple-500" placeholder="https://linkedin.com/post/..." value={finalForm.linkedinLink} onChange={e => setFinalForm({...finalForm, linkedinLink: e.target.value})} disabled={proposal.status === 'Submitted'}/>
+                              <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">LinkedIn Presentation Link</label>
+                              <input type="url" placeholder="https://linkedin.com/..." className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm" value={finalForm.linkedinLink} onChange={e => setFinalForm({...finalForm, linkedinLink: e.target.value})} />
                             </div>
-                            {(proposal.status !== 'Submitted' || proposal.finalSubmission?.status === 'Rejected') && (
-                              <button type="submit" className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-md transition-all flex justify-center items-center gap-2">
-                                 <Send className="w-4 h-4"/> {proposal.finalSubmission?.status === 'Rejected' ? 'Re-Submit Links' : 'Submit Links'}
-                              </button>
-                            )}
+                            <button type="submit" className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-md transition-all">Submit Final Project</button>
                           </form>
                         </div>
+                      )}
+                    </div>
 
-                        {/* Right Column: File Upload */}
-                        <div className="bg-gray-50/50 p-6 rounded-3xl border border-gray-100">
-                          <h3 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Upload className="w-4 h-4 text-blue-500" /> Upload Documents</h3>
-                          <div className="grid grid-cols-2 gap-3 mb-5">
-                            {FILE_TYPES.map(({ value, label, icon: Icon }) => (
-                              <button key={value} type="button" onClick={() => setSelectedFileType(value)}
-                                className={`p-3 rounded-xl border-2 text-left transition-all flex flex-col items-center justify-center text-center ${selectedFileType === value ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-gray-200 bg-white hover:border-blue-200'}`}>
-                                <Icon className={`w-5 h-5 mb-1.5 ${selectedFileType === value ? 'text-blue-600' : 'text-gray-400'}`} />
-                                <p className={`text-[10px] font-bold ${selectedFileType === value ? 'text-blue-800' : 'text-gray-500'}`}>{label}</p>
-                              </button>
-                            ))}
-                          </div>
-                          <label className={`flex flex-col items-center justify-center border-2 border-dashed rounded-2xl p-6 cursor-pointer transition-all ${uploading ? 'border-blue-300 bg-blue-50/50' : 'border-gray-300 bg-white hover:border-blue-400 hover:bg-blue-50/30'}`}>
-                            {uploading
-                              ? <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-3"></div>
-                              : <Upload className="w-8 h-8 text-blue-400 mb-3" />
-                            }
-                            <p className="text-xs font-bold text-gray-700 text-center">{uploading ? 'Uploading...' : 'Click or drop files here'}</p>
-                            <p className="text-[10px] text-gray-400 mt-1">You can select multiple files</p>
-                            <input type="file" multiple className="hidden" onChange={handleFileUpload} disabled={uploading} />
-                          </label>
+                    {/* Submissions List */}
+                    <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+                      <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><FileText className="w-4 h-4 text-blue-500" /> Submission Deliverables History</h3>
+                      {files.length === 0 ? (
+                        <div className="py-12 text-center text-gray-400 italic">No files uploaded yet. Select a file type and upload deliverables.</div>
+                      ) : (
+                        <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
+                          {files.map(f => (
+                            <div key={f._id} className="p-3 bg-gray-50 border border-gray-200 rounded-2xl flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center shrink-0 font-bold"><FileText className="w-4.5 h-4.5" /></div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-bold text-gray-900 truncate">{f.fileName}</p>
+                                  <p className="text-[10px] text-gray-400">Type: <span className="font-semibold uppercase">{f.fileType}</span> • Version: v{f.version}</p>
+                                  <p className="text-[10px] text-gray-400">Uploaded: {new Date(f.createdAt).toLocaleDateString()}</p>
+                                </div>
+                              </div>
+                              <a href={f.cloudinaryUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-white hover:bg-blue-50 hover:text-blue-600 rounded-xl border border-gray-200 shadow-sm transition"><Download className="w-4 h-4" /></a>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    )}
-                 </div>
-
-                 {/* Uploaded Files Manager */}
-                 {proposal && ['Faculty Accepted', 'Submitted'].includes(proposal.status) && (
-                   <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-                     <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                       <h3 className="font-extrabold text-gray-900 text-sm flex items-center gap-2"><FolderOpen className="w-4 h-4 text-blue-500" /> Uploaded History</h3>
-                       <span className="text-xs font-bold text-gray-500 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-200">{files.length} items</span>
-                     </div>
-                     {files.length === 0 ? (
-                       <div className="p-8 text-center text-gray-400 font-medium text-sm">No documents uploaded yet.</div>
-                     ) : (
-                       <div className="divide-y divide-gray-50">
-                         {files.map(f => (
-                           <div key={f._id} className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors">
-                             <div className="w-10 h-10 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-gray-100 flex items-center justify-center shrink-0">
-                               <FileText className="w-5 h-5 text-blue-500" />
-                             </div>
-                             <div className="flex-1 min-w-0">
-                               <p className="text-sm font-bold text-gray-900 truncate">{f.fileName}</p>
-                               <div className="flex flex-wrap items-center gap-2 mt-1">
-                                 <span className="text-[10px] font-extrabold uppercase bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md">{f.fileType}</span>
-                                 <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">v{f.version}</span>
-                                 <span className="text-[10px] font-bold text-gray-400">{new Date(f.createdAt).toLocaleDateString()}</span>
-                               </div>
-                             </div>
-                             <a href={f.cloudinaryUrl} target="_blank" rel="noopener noreferrer" className="p-2.5 bg-white hover:bg-blue-50 text-blue-600 rounded-xl border border-gray-200 hover:border-blue-200 transition-all shadow-sm">
-                               <Download className="w-4 h-4" />
-                             </a>
-                           </div>
-                         ))}
-                       </div>
-                     )}
-                   </div>
-                 )}
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
-           </motion.div>
-         </AnimatePresence>
-       </div>
-       
-       <AnimatePresence>
-         {activeTab === 'profile' && (
-           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="p-8 max-w-7xl mx-auto w-full absolute inset-0 top-[73px] bg-slate-50 overflow-auto z-10">
-              <div className="space-y-6">
-                <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden p-8 relative">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-blue-100 to-transparent rounded-full blur-3xl opacity-50 pointer-events-none"></div>
-                  
-                  <div className="flex flex-col md:flex-row gap-8 relative z-10">
-                    <div className="flex flex-col items-center shrink-0 w-full md:w-64">
-                      {data.profile?.profilePhoto?.url ? (
-                         <img src={data.profile.profilePhoto.url} className="w-40 h-40 rounded-[2rem] object-cover ring-4 ring-blue-50 shadow-xl mb-4" />
-                      ) : (
-                         <div className="w-40 h-40 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-[2rem] flex items-center justify-center text-5xl font-black text-white shadow-xl mb-4 ring-4 ring-blue-50">
-                            {data.profile?.name?.[0].toUpperCase()}
-                         </div>
-                      )}
-                      <h2 className="text-2xl font-black text-gray-900 text-center">{data.profile?.name}</h2>
-                      <p className="text-sm font-bold text-gray-400 bg-gray-50 px-3 py-1 rounded-full mt-2">{data.profile?.enrollmentNumber || 'No Enrollment ID'}</p>
-                      
-                      <div className="w-full mt-6 space-y-2">
-                        <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex flex-col items-center">
-                           <span className="text-[10px] uppercase font-black text-gray-400 mb-0.5">Course</span>
-                           <span className="text-sm font-bold text-gray-800">{data.profile?.course} • {data.profile?.branch}</span>
+            {/* ── 6. ANNOUNCEMENTS ── */}
+            {activeTab === 'announcements' && (
+              <div className="max-w-4xl mx-auto space-y-6">
+                <h3 className="text-gray-900 font-extrabold text-base">Department Announcements</h3>
+                <div className="space-y-3">
+                  {data.announcements && data.announcements.length > 0 ? (
+                    data.announcements.map(ann => (
+                      <div key={ann._id} className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full uppercase">{ann.targetAudience === 'all' ? 'All Users' : ann.targetAudience}</span>
                         </div>
-                        <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 flex flex-col items-center">
-                           <span className="text-[10px] uppercase font-black text-blue-400 mb-0.5">Year</span>
-                           <span className="text-sm font-bold text-blue-800">Year {data.profile?.year} • Sec {data.profile?.section}</span>
-                        </div>
+                        <h4 className="text-gray-900 font-bold text-sm">{ann.title}</h4>
+                        <p className="text-gray-500 text-sm mt-1 leading-relaxed">{ann.content}</p>
+                        <p className="text-gray-400 text-xs mt-2">Published: {new Date(ann.createdAt).toLocaleDateString()}</p>
                       </div>
-                    </div>
-
-                    <div className="flex-1 bg-gray-50/50 p-6 rounded-3xl border border-gray-100">
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-blue-100 text-blue-600 rounded-xl"><User className="w-5 h-5"/></div>
-                        <h3 className="text-lg font-black text-gray-900">Manage Profile Links</h3>
-                      </div>
-                      
-                      <form onSubmit={handleProfileSubmit} className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="text-xs font-bold text-gray-700 mb-1.5 block">GitHub Profile</label>
-                            <input type="url" placeholder="https://github.com/..." className="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-blue-500 shadow-sm"
-                              value={profileForm.githubId} onChange={e => setProfileForm(p => ({...p, githubId: e.target.value}))} />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-gray-700 mb-1.5 block">LinkedIn Profile</label>
-                            <input type="url" placeholder="https://linkedin.com/in/..." className="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-blue-500 shadow-sm"
-                              value={profileForm.linkedinId} onChange={e => setProfileForm(p => ({...p, linkedinId: e.target.value}))} />
-                          </div>
-                          <div className="md:col-span-2">
-                            <label className="text-xs font-bold text-gray-700 mb-1.5 block">Personal Portfolio</label>
-                            <input type="url" placeholder="https://mywebsite.com" className="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-blue-500 shadow-sm"
-                              value={profileForm.portfolioLink} onChange={e => setProfileForm(p => ({...p, portfolioLink: e.target.value}))} />
-                          </div>
-                        </div>
-
-                        <div className="pt-4 mt-2 border-t border-gray-100">
-                          <label className="text-xs font-bold text-gray-700 mb-3 block">Resume Upload (PDF/Document)</label>
-                          {data.profile?.resume?.url && (
-                             <div className="mb-3 p-3 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between">
-                               <div className="flex items-center gap-2 text-indigo-700">
-                                  <FileText className="w-4 h-4" />
-                                  <span className="text-xs font-bold">Current Resume Uploaded</span>
-                               </div>
-                               <a href={data.profile.resume.url} target="_blank" className="text-[10px] font-black uppercase px-3 py-1 bg-white text-indigo-600 rounded-lg shadow-sm hover:shadow-md transition-all">View</a>
-                             </div>
-                          )}
-                          <label className={`block border-2 ${resumeFile ? 'border-blue-500 bg-blue-50' : 'border-dashed border-gray-300 bg-white hover:bg-gray-50'} rounded-2xl p-4 text-center cursor-pointer transition-all`}>
-                            <input type="file" ref={resumeRef} className="hidden" accept=".pdf,.doc,.docx" onChange={e => setResumeFile(e.target.files[0])} />
-                            {resumeFile ? (
-                              <p className="text-sm font-bold text-blue-700 flex items-center justify-center gap-2"><CheckCircle className="w-4 h-4"/> {resumeFile.name}</p>
-                            ) : (
-                              <p className="text-sm font-medium text-gray-500 flex flex-col items-center gap-2"><Upload className="w-5 h-5 text-gray-400"/> Select a new file to replace</p>
-                            )}
-                          </label>
-                        </div>
-
-                        <button disabled={updatingProfile} type="submit" className="w-full mt-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-md disabled:opacity-50 transition-all flex justify-center items-center gap-2">
-                           {updatingProfile ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><RefreshCw className="w-4 h-4"/> Save Profile</>}
-                        </button>
-                      </form>
-                    </div>
-                  </div>
+                    ))
+                  ) : (
+                    <div className="py-12 text-center text-gray-400 italic bg-white border border-gray-100 rounded-2xl">No announcements from your department HOD yet.</div>
+                  )}
                 </div>
               </div>
-           </motion.div>
-         )}
+            )}
 
-         {/* ═══════════════════════ TIMELINE ═══════════════════════ */}
-         {activeTab === 'timeline' && (
-           <motion.div key="timeline" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
-             className="max-w-3xl mx-auto space-y-8">
-             {timelineLoading ? (
-               <div className="flex items-center justify-center h-40"><div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent"/></div>
-             ) : (
-               <ProjectTimeline
-                 timeline={timeline}
-                 projectStatus={data.proposal?.status}
-                 onAddEntry={handleAddTimelineEntry}
-                 onAddComment={handleAddTimelineComment}
-                 currentUserName={data.profile?.name}
-                 isStudent={true}
-               />
-             )}
+            {/* ── 7. MY PROFILE ── */}
+            {activeTab === 'profile' && (
+              <div className="max-w-4xl mx-auto">
+                <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                  <h3 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-6 border-b border-gray-100 pb-2">My Profile Credentials</h3>
+                  <div className="flex flex-col md:flex-row items-center gap-6 mb-8 bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                    <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-3xl">
+                      {data.profile?.name?.[0]?.toUpperCase()}
+                    </div>
+                    <div className="text-center md:text-left">
+                      <h4 className="text-xl font-extrabold text-gray-900">{data.profile?.name}</h4>
+                      <p className="text-xs text-gray-500 mt-1">{data.profile?.email} • {data.profile?.mobileNumber}</p>
+                      <p className="text-xs text-gray-400 mt-0.5 font-bold uppercase tracking-wider">{data.profile?.course} — {data.profile?.branch} Dept.</p>
+                      <p className="text-xs text-gray-400">Year {data.profile?.year || 'N/A'} • Sec-{data.profile?.section || 'N/A'}</p>
+                    </div>
+                  </div>
 
-             {/* Deadline Extension Request Section */}
-             <div style={{ background: 'rgba(30,30,50,0.7)', borderRadius: '20px', padding: '28px', border: '1px solid rgba(255,255,255,0.08)' }}>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                 <h3 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '18px' }}>📋 Deadline Extension Requests</h3>
-                 <button
-                   onClick={() => setShowExtensionForm(p => !p)}
-                   style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', color: '#1a1a2e', border: 'none', borderRadius: '10px', padding: '8px 16px', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}
-                 >
-                   {showExtensionForm ? 'Cancel' : '+ Request Extension'}
-                 </button>
-               </div>
+                  <form onSubmit={handleProfileSubmit} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">GitHub Profile Link</label>
+                        <input type="url" placeholder="https://github.com/..." className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none" value={profileForm.githubId} onChange={e => setProfileForm({...profileForm, githubId: e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">LinkedIn Profile Link</label>
+                        <input type="url" placeholder="https://linkedin.com/in/..." className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none" value={profileForm.linkedinId} onChange={e => setProfileForm({...profileForm, linkedinId: e.target.value})} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">Portfolio Website URL</label>
+                      <input type="url" placeholder="https://..." className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none" value={profileForm.portfolioLink} onChange={e => setProfileForm({...profileForm, portfolioLink: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">Supporting Resume (PDF only)</label>
+                      <div className="flex items-center gap-3">
+                        <input type="file" ref={resumeRef} accept=".pdf" className="hidden" onChange={e => setResumeFile(e.target.files[0])} />
+                        <button type="button" onClick={() => resumeRef.current.click()} className="px-4 py-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-bold transition flex items-center gap-2"><Upload className="w-4 h-4 text-blue-500" /> Select PDF</button>
+                        <span className="text-xs text-gray-400 truncate">{resumeFile ? resumeFile.name : data.profile?.resume?.url ? 'Resume PDF Uploaded' : 'No file chosen'}</span>
+                      </div>
+                    </div>
+                    <button type="submit" disabled={updatingProfile} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-md">{updatingProfile ? 'Saving...' : 'Save Profile Changes'}</button>
+                  </form>
+                </div>
+              </div>
+            )}
 
-               {showExtensionForm && (
-                 <form onSubmit={handleRequestExtension} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '14px', padding: '20px', marginBottom: '20px', border: '1px solid rgba(245,158,11,0.3)' }}>
-                   <div style={{ display: 'grid', gap: '14px' }}>
-                     <div>
-                       <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Select Deadline *</label>
-                       <select value={extensionForm.deadlineId} onChange={e => setExtensionForm(p => ({...p, deadlineId: e.target.value}))}
-                         style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', color: '#f1f5f9', fontSize: '14px', marginTop: '6px' }} required>
-                         <option value="">Choose a deadline...</option>
-                         {(data.deadlines || []).map(d => (
-                           <option key={d._id} value={d._id}>{d.title} — {new Date(d.dueDate).toLocaleDateString()}</option>
-                         ))}
-                       </select>
-                     </div>
-                     <div>
-                       <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Requested New Date *</label>
-                       <input type="date" value={extensionForm.requestedDate} min={new Date().toISOString().split('T')[0]}
-                         onChange={e => setExtensionForm(p => ({...p, requestedDate: e.target.value}))}
-                         style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', color: '#f1f5f9', fontSize: '14px', marginTop: '6px' }} required/>
-                     </div>
-                     <div>
-                       <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Reason (min. 20 chars) *</label>
-                       <textarea value={extensionForm.reason} onChange={e => setExtensionForm(p => ({...p, reason: e.target.value}))}
-                         rows={3} placeholder="Explain why you need an extension..."
-                         style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', color: '#f1f5f9', fontSize: '14px', marginTop: '6px', resize: 'vertical', fontFamily: 'inherit' }} required/>
-                     </div>
-                     <div>
-                       <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Supporting Document (optional)</label>
-                       <input type="file" accept=".pdf,.doc,.docx,.jpg,.png" onChange={e => setExtensionDoc(e.target.files[0])}
-                         style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px', color: '#94a3b8', fontSize: '13px', marginTop: '6px' }}/>
-                     </div>
-                     <button type="submit" disabled={submittingExtension}
-                       style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', color: '#1a1a2e', border: 'none', borderRadius: '10px', padding: '12px', fontWeight: 700, cursor: 'pointer', fontSize: '14px', opacity: submittingExtension ? 0.6 : 1 }}>
-                       {submittingExtension ? 'Submitting...' : 'Submit Request'}
-                     </button>
-                   </div>
-                 </form>
-               )}
-
-               {extensionRequests.length === 0 ? (
-                 <p style={{ color: '#64748b', fontSize: '14px', textAlign: 'center', padding: '24px 0' }}>No extension requests yet.</p>
-               ) : (
-                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                   {extensionRequests.map(req => (
-                     <div key={req._id} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                       <div>
-                         <p style={{ color: '#c4b5fd', fontWeight: 700, fontSize: '14px' }}>{req.deadlineId?.title || 'Deadline'}</p>
-                         <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>Requested: {new Date(req.requestedDate).toLocaleDateString()}</p>
-                         <p style={{ color: '#94a3b8', fontSize: '12px' }}>Reason: {req.reason.substring(0, 80)}...</p>
-                         {req.remarks && <p style={{ color: '#fbbf24', fontSize: '12px', marginTop: '4px' }}>Remark: {req.remarks}</p>}
-                       </div>
-                       <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, background: req.status === 'Approved' ? 'rgba(34,197,94,0.2)' : req.status === 'Rejected' ? 'rgba(239,68,68,0.2)' : 'rgba(251,191,36,0.2)', color: req.status === 'Approved' ? '#4ade80' : req.status === 'Rejected' ? '#f87171' : '#fbbf24', flexShrink: 0 }}>
-                         {req.status}
-                       </span>
-                     </div>
-                   ))}
-                 </div>
-               )}
-             </div>
-           </motion.div>
-         )}
-
-         {/* ═══════════════════════ ANNOUNCEMENTS (Read-Only) ═══════════════════════ */}
-
-         {activeTab === 'announcements' && (
-           <motion.div key="announcements" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
-             className="max-w-3xl mx-auto" onViewportEnter={() => {
-               api.get('/announcements').then(r => setAnnouncements(r.data.announcements || [])).catch(() => {});
-             }}>
-             <div className="flex items-center gap-3 mb-6">
-               <div className="p-2 bg-blue-100 rounded-xl"><Megaphone className="w-5 h-5 text-blue-600" /></div>
-               <div>
-                 <h2 className="text-gray-900 font-bold text-base">Announcements</h2>
-                 <p className="text-gray-400 text-xs">Updates from Admin, HOD, and Faculty</p>
-               </div>
-             </div>
-             <div className="space-y-3">
-               {announcements.length === 0 && (
-                 <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
-                   <Megaphone className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-                   <p className="text-gray-400 text-sm">No announcements yet. Check back later.</p>
-                 </div>
-               )}
-               {announcements.map(ann => (
-                 <div key={ann._id} className={`bg-white rounded-2xl border p-5 ${ann.pinned ? 'border-blue-200 bg-blue-50/20' : 'border-gray-100'} shadow-sm`}>
-                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                     {ann.pinned && <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full flex items-center gap-1"><Pin className="w-3 h-3" /> Pinned</span>}
-                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
-                       ann.createdByRole === 'admin' ? 'bg-rose-100 text-rose-600' :
-                       ann.createdByRole === 'hod' ? 'bg-purple-100 text-purple-600' : 'bg-indigo-100 text-indigo-600'
-                     }`}>{ann.createdByRole}</span>
-                   </div>
-                   <h3 className="text-gray-900 font-bold text-sm mb-1">{ann.title}</h3>
-                   <p className="text-gray-600 text-sm leading-relaxed">{ann.content}</p>
-                   <p className="text-gray-400 text-xs mt-3">Posted by <span className="font-semibold">{ann.createdByName}</span> · {new Date(ann.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                 </div>
-               ))}
-             </div>
-           </motion.div>
-         )}
-
-       </AnimatePresence>
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
+
+      {/* Extension Modal (Task 6) */}
+      {extensionModal.open && extensionModal.deadline && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="font-bold text-gray-900">Request Deadline Extension</h2>
+              <button onClick={() => setExtensionModal({ open: false, deadline: null })} className="text-gray-400 hover:text-gray-600"><XCircle className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleExtensionSubmit} className="p-5 space-y-4">
+              <div className="p-3 bg-purple-50 border border-purple-100 rounded-xl text-xs text-purple-700">
+                🚀 Requesting extension for milestone: <strong>{extensionModal.deadline.title}</strong> (Due {new Date(extensionModal.deadline.dueDate).toLocaleDateString()})
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Requested Target Date *</label>
+                <input required type="datetime-local" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" value={extForm.requestedDate} onChange={e => setExtForm({...extForm, requestedDate: e.target.value})} />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Reason (min 20 characters) *</label>
+                <textarea required rows={3} placeholder="Explain why you need this extension..." className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none" value={extForm.reason} onChange={e => setExtForm({...extForm, reason: e.target.value})} />
+                <p className="text-[10px] text-gray-400 mt-1">{extForm.reason.length}/20 chars min</p>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Optional Supporting Document (PDF / DOCX)</label>
+                <input type="file" accept=".pdf,.doc,.docx" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs" onChange={e => setExtForm({...extForm, document: e.target.files[0]})} />
+              </div>
+              <button type="submit" disabled={extSubmitting} className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-all shadow-md shadow-purple-500/20">{extSubmitting ? 'Submitting...' : 'Submit Request'}</button>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Smart Deadline Popup reminders (Task 7) */}
+      <AnimatePresence>
+        {reminderPopup.open && reminderPopup.deadline && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-100">
+              
+              {/* Header based on urgency */}
+              {reminderPopup.type === 'today' && (
+                <div className="bg-gradient-to-r from-red-600 to-rose-600 p-6 text-white text-center">
+                  <AlertTriangle className="w-12 h-12 mx-auto mb-2 animate-bounce" />
+                  <h3 className="text-xl font-extrabold">🚨 Submission Deadline is TODAY!</h3>
+                  <p className="text-white/80 text-xs mt-1">Submit your deliverables immediately to prevent late penalties.</p>
+                </div>
+              )}
+              {reminderPopup.type === 'urgent' && (
+                <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-6 text-white text-center">
+                  <Clock className="w-12 h-12 mx-auto mb-2 animate-pulse" />
+                  <h3 className="text-xl font-extrabold">⚠️ Urgent Reminder: 2 Days Left!</h3>
+                  <p className="text-white/80 text-xs mt-1">Review the submission checklist below carefully.</p>
+                </div>
+              )}
+              {reminderPopup.type === 'motivational' && (
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white text-center">
+                  <Sparkles className="w-12 h-12 mx-auto mb-2 animate-spin-slow" />
+                  <h3 className="text-xl font-extrabold">🚀 Project Milestone Approaching: 10 Days Left</h3>
+                  <p className="text-white/80 text-xs mt-1">Keep up the steady momentum, team!</p>
+                </div>
+              )}
+
+              {/* Body Content */}
+              <div className="p-6 space-y-4">
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl">
+                  <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Milestone Target</p>
+                  <p className="text-lg font-bold text-gray-900 mt-1">{reminderPopup.deadline.title}</p>
+                  <p className="text-xs text-gray-400">Description: {reminderPopup.deadline.description || 'Deliver project target documentation.'}</p>
+                  <p className="text-xs font-black text-red-600 mt-2">Due Date: {new Date(reminderPopup.deadline.dueDate).toLocaleString()}</p>
+                </div>
+
+                {/* Specific Popups Features */}
+                {reminderPopup.type === 'motivational' && (
+                  <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl text-xs text-blue-800 leading-relaxed space-y-2">
+                    <p className="font-bold flex items-center gap-1"><Sparkles className="w-4 h-4 text-blue-600"/> Milestone Preparation Guidance:</p>
+                    <ul className="list-disc pl-4 space-y-1">
+                      <li>Draft the main proposal/report architecture with your members.</li>
+                      <li>Finalize the basic code prototypes and compile references.</li>
+                      <li>Sync up with your Faculty Supervisor to clear conceptual blocker reviews.</li>
+                    </ul>
+                  </div>
+                )}
+
+                {reminderPopup.type === 'urgent' && (
+                  <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-xs text-amber-800 space-y-2">
+                    <p className="font-bold flex items-center gap-1"><Info className="w-4 h-4 text-amber-600"/> Submission Preparation Checklist:</p>
+                    <div className="space-y-1.5 font-medium pl-1">
+                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-amber-600" /> Deliverable documentation PDF cleared and proofread.</label>
+                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-amber-600" /> Git codebase pushed and branches unified.</label>
+                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="rounded text-amber-600" /> Presentation (PPT) prepared and slide counts verified.</label>
+                    </div>
+                  </div>
+                )}
+
+                {reminderPopup.type === 'today' && (
+                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-xs text-rose-800 leading-relaxed font-bold">
+                    ⚠️ CRITICAL: Today is the final date. Head over to the Submission & Files tab, attach your deliverables, or post progress timeline updates immediately to avoid grading deductions!
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button onClick={dismissPopup} className="flex-1 py-3 border border-gray-200 hover:bg-gray-50 text-gray-600 text-xs font-bold rounded-2xl transition">Mark as Read (Dismiss)</button>
+                  <button onClick={() => { setReminderPopup({ open: false, deadline: null, type: '' }); setActiveTab('submission'); }} className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-2xl transition">Go to Submissions</button>
+                </div>
+              </div>
+
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

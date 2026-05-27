@@ -6,20 +6,24 @@ import {
   CheckCircle, XCircle, FileText, RefreshCw, MessageSquare,
   Clock, Send, AlertCircle, Download, Calendar,
   Megaphone, Pin, Plus, X, Trash2, Users, Search,
-  Filter, ChevronDown, ChevronUp, ExternalLink, User, TrendingUp
+  Filter, ChevronDown, ChevronUp, ExternalLink, User
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api, { facultyAPI } from '../lib/api.js';
+import api from '../lib/api.js';
 import Sidebar from '../Components/Sidebar';
-import ProjectTimeline from '../Components/ProjectTimeline';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, 
+  Tooltip as RechartsTooltip, ResponsiveContainer, 
+  PieChart, Pie, Cell, Legend 
+} from 'recharts';
 
 const TABS = [
-  { id: 'overview',   label: 'Overview',       icon: LayoutDashboard },
-  { id: 'projects',   label: 'My Projects',    icon: FolderOpen },
-  { id: 'students',   label: 'My Students',    icon: Users },
-  { id: 'extensions', label: 'Extensions',     icon: Calendar },
-  { id: 'pending',    label: 'Pending Review', icon: Clock },
-  { id: 'announcements', label: 'Announcements', icon: Megaphone },
+  { id: 'overview',      label: 'Overview',       icon: LayoutDashboard },
+  { id: 'projects',      label: 'My Projects',    icon: FolderOpen },
+  { id: 'pending',       label: 'Pending Review', icon: Clock },
+  { id: 'students',      label: 'My Students',    icon: Users },
+  { id: 'extensions',    label: 'Extensions',     icon: Calendar },
+  { id: 'announcements', label: 'Announcements',  icon: Megaphone },
 ];
 
 const STATUS_BADGE = {
@@ -27,6 +31,8 @@ const STATUS_BADGE = {
   'Faculty Assigned': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'Submitted':        'bg-purple-50 text-purple-700 border-purple-200',
 };
+
+const DONUT_COLORS = ['#6366F1', '#06B6D4', '#10B981', '#F59E0B', '#EF4444', '#EC4899'];
 
 const STATUS_STEPS = [
   { key: 'Pending HOD Review',   label: 'Submitted',        icon: '📝' },
@@ -43,8 +49,20 @@ const getStepIndex = (status) => {
 
 const FacultyDashboard = () => {
   const [activeTab, setActiveTab]       = useState('overview');
-  const [data, setData]                 = useState({ profile: null, activeProjects: [], pendingProposals: [], projectFiles: {}, recentSubmissions: [], deadlines: [], notifications: [] });
+  const [data, setData]                 = useState({ 
+    profile: null, 
+    activeProjects: [], 
+    pendingProposals: [], 
+    projectFiles: {}, 
+    recentSubmissions: [], 
+    deadlines: [], 
+    notifications: [],
+    analytics: {},
+    extensionRequests: []
+  });
   const [loading, setLoading]           = useState(true);
+  
+  // Existing states
   const [feedbackInput, setFeedbackInput] = useState({});
   const [submitting, setSubmitting]     = useState({});
   const [rejectModal, setRejectModal]   = useState({ id: null, reason: '', type: 'proposal' }); // type: 'proposal' | 'submission'
@@ -53,19 +71,21 @@ const FacultyDashboard = () => {
   const [projectSearch, setProjectSearch] = useState('');
   const [projectFilter, setProjectFilter] = useState('all');
   const [pendingSearch, setPendingSearch] = useState('');
+  
+  // Announcements states
   const [announcements, setAnnouncements] = useState([]);
   const [annForm, setAnnForm]           = useState({ title: '', content: '', targetAudience: 'all', pinned: false });
   const [showAnnForm, setShowAnnForm]   = useState(false);
   const [annSubmitting, setAnnSubmitting] = useState(false);
 
-  // My Students
-  const [myStudents, setMyStudents]     = useState([]);
-  const [loadingStudents, setLoadingStudents] = useState(false);
-  const [studentSearch, setStudentSearch] = useState('');
-
-  // Extension Requests
-  const [extensionRequests, setExtensionRequests] = useState([]);
-  const [loadingExtensions, setLoadingExtensions] = useState(false);
+  // New Upgrade states
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [studentSearch, setStudentSearch]     = useState('');
+  const [studentBranch, setStudentBranch]     = useState('all');
+  const [timelineComment, setTimelineComment] = useState({});
+  const [timelineSubmitting, setTimelineSubmitting] = useState({});
+  const [extensionRemarks, setExtensionRemarks] = useState({});
+  const [extensionResolving, setExtensionResolving] = useState({});
 
   const navigate = useNavigate();
 
@@ -82,38 +102,6 @@ const FacultyDashboard = () => {
   }, []);
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
-
-  const fetchMyStudents = useCallback(async () => {
-    setLoadingStudents(true);
-    try {
-      const res = await facultyAPI.getMyStudents();
-      setMyStudents(res.data || []);
-    } catch (_) {}
-    finally { setLoadingStudents(false); }
-  }, []);
-
-  const fetchExtensions = useCallback(async () => {
-    setLoadingExtensions(true);
-    try {
-      const res = await facultyAPI.getDashboard();
-      setExtensionRequests(res.data.extensionRequests || []);
-    } catch (_) {}
-    finally { setLoadingExtensions(false); }
-  }, []);
-
-  const handleReviewExtension = async (id, status, remarks = '') => {
-    try {
-      await facultyAPI.reviewExtension(id, { status, remarks });
-      toast.success(`Extension request ${status.toLowerCase()}!`);
-      fetchExtensions();
-    } catch (e) { toast.error(e.response?.data?.message || 'Action failed'); }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'students' && myStudents.length === 0) fetchMyStudents();
-    if (activeTab === 'extensions' && extensionRequests.length === 0) fetchExtensions();
-  }, [activeTab, myStudents.length, extensionRequests.length, fetchMyStudents, fetchExtensions]);
-
   useEffect(() => {
     if (activeTab === 'announcements') {
       api.get('/announcements').then(r => setAnnouncements(r.data.announcements || [])).catch(() => {});
@@ -162,7 +150,90 @@ const FacultyDashboard = () => {
     } catch { toast.error('Failed to assign deadline'); }
   };
 
+  // Timeline comments submit handler
+  const handleTimelineCommentSubmit = async (proposalId, timelineId) => {
+    const comment = timelineComment[`${proposalId}_${timelineId}`];
+    if (!comment || comment.trim().length < 2) return toast.error('Comment must be at least 2 characters.');
+    
+    setTimelineSubmitting(prev => ({ ...prev, [`${proposalId}_${timelineId}`]: true }));
+    try {
+      const res = await api.post(`/faculty/proposals/${proposalId}/timeline/${timelineId}/comment`, { comment: comment.trim() });
+      toast.success('Comment added successfully!');
+      
+      // Update selectedStudent project timeline inline if modal is currently open
+      if (selectedStudent && selectedStudent.project._id === proposalId) {
+        const updatedProject = res.data.proposal;
+        setSelectedStudent(prev => ({
+          ...prev,
+          project: updatedProject
+        }));
+      }
+
+      setTimelineComment(prev => ({ ...prev, [`${proposalId}_${timelineId}`]: '' }));
+      fetchDashboard();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to add comment');
+    } finally {
+      setTimelineSubmitting(prev => ({ ...prev, [`${proposalId}_${timelineId}`]: false }));
+    }
+  };
+
+  // Extension request resolve handler
+  const handleExtensionResolve = async (requestId, status) => {
+    const remarks = extensionRemarks[requestId] || '';
+    setExtensionResolving(prev => ({ ...prev, [requestId]: true }));
+    try {
+      await api.put(`/faculty/extensions/${requestId}/resolve`, { status, remarks });
+      toast.success(`Extension request marked as ${status}!`);
+      fetchDashboard();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Action failed');
+    } finally {
+      setExtensionResolving(prev => ({ ...prev, [requestId]: false }));
+    }
+  };
+
   const toggleExpand = (id) => setExpandedProjects(p => ({ ...p, [id]: !p[id] }));
+
+  // Helper to compile list of unique supervised students
+  const getSupervisedStudents = () => {
+    const list = [];
+    (data.activeProjects || []).forEach(p => {
+      // Add Leader
+      if (p.studentId) {
+        list.push({
+          _id: p.studentId._id,
+          name: p.studentId.name,
+          email: p.studentId.email,
+          branch: p.studentId.branch || p.department,
+          course: p.studentId.course || 'B.Tech',
+          year: p.studentId.year || '4',
+          section: p.studentId.section || 'A',
+          mobileNumber: p.studentId.mobileNumber,
+          profilePhoto: p.studentId.profilePhoto,
+          role: 'Team Leader',
+          project: p
+        });
+      }
+      // Add Members
+      (p.teamMembers || []).forEach(m => {
+        list.push({
+          _id: m._id || m.email,
+          name: m.name,
+          email: m.email,
+          branch: m.branch || p.department,
+          course: m.course || 'B.Tech',
+          year: p.studentId?.year || '4',
+          section: m.section || p.studentId?.section || 'A',
+          mobileNumber: m.mobileNumber,
+          profilePhoto: null,
+          role: 'Team Member',
+          project: p
+        });
+      });
+    });
+    return list;
+  };
 
   const filteredProjects = (data.activeProjects || []).filter(p => {
     const matchSearch = !projectSearch || p.title.toLowerCase().includes(projectSearch.toLowerCase()) || p.studentId?.name?.toLowerCase().includes(projectSearch.toLowerCase());
@@ -189,7 +260,7 @@ const FacultyDashboard = () => {
       <div className="flex-1 overflow-auto">
         <header className="bg-white border-b border-gray-100 shadow-sm px-8 py-4 flex items-center justify-between sticky top-0 z-20">
           <div>
-            <h2 className="text-lg font-extrabold text-gray-900">{TABS.find(t => t.id === activeTab)?.label}</h2>
+            <h2 className="text-lg font-extrabold text-gray-900 capitalize">{TABS.find(t => t.id === activeTab)?.label}</h2>
             <p className="text-xs text-gray-400 font-medium">Faculty Management Panel</p>
           </div>
           <button onClick={fetchDashboard} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl border border-gray-200 transition-all">
@@ -203,63 +274,141 @@ const FacultyDashboard = () => {
 
             {/* ── OVERVIEW ── */}
             {activeTab === 'overview' && (
-              <div className="space-y-6">
+              <div className="space-y-8">
+                
+                {/* ── METRIC CARDS ── */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
-                    { label: 'Active Projects', value: data.activeProjects?.length || 0, color: 'indigo', icon: FolderOpen },
-                    { label: 'Pending Review',  value: data.pendingProposals?.length || 0, color: 'amber', icon: Clock },
-                    { label: 'Recent Uploads',  value: data.recentSubmissions?.length || 0, color: 'blue', icon: FileText },
-                    { label: 'New Notifications', value: data.notifications?.length || 0, color: 'purple', icon: Bell },
-                  ].map(({ label, value, color, icon: Icon }) => (
+                    { label: 'Total Supervised Students', value: data.analytics?.totalStudents || 0, color: 'indigo', icon: Users, sub: 'Active Members' },
+                    { label: 'Completed Projects',  value: data.analytics?.completedProjects || 0, color: 'green', icon: CheckCircle, sub: 'Submitted' },
+                    { label: 'Pending Reviews',  value: data.analytics?.pendingReviewsCount || 0, color: 'amber', icon: Clock, sub: 'Proposals' },
+                    { label: 'Upcoming Deadlines', value: data.analytics?.upcomingDeadlinesCount || 0, color: 'purple', icon: Calendar, sub: 'Targeted & Global' },
+                  ].map(({ label, value, color, icon: Icon, sub }) => (
                     <div key={label} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
                       <div className="flex items-center justify-between mb-3">
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">{label}</p>
                         <div className={`p-2 bg-${color}-50 rounded-xl`}><Icon className={`w-4 h-4 text-${color}-500`} /></div>
                       </div>
                       <h3 className="text-3xl font-extrabold text-gray-900">{value}</h3>
+                      <p className="text-[11px] text-gray-400 mt-1">{sub}</p>
                     </div>
                   ))}
                 </div>
 
-                {/* Deadlines */}
-                {data.deadlines?.length > 0 && (
-                  <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-purple-500" /> Deadlines</h3>
-                    <div className="space-y-2">
-                      {data.deadlines.map(d => {
-                        const diff = Math.ceil((new Date(d.dueDate) - new Date()) / 86400000);
-                        return (
-                          <div key={d._id} className={`flex justify-between items-center p-3 rounded-xl border ${diff <= 3 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
-                            <div>
-                              <p className={`text-sm font-bold ${diff <= 3 ? 'text-red-700' : 'text-gray-900'}`}>{d.title}</p>
-                              <p className="text-xs text-gray-400">{new Date(d.dueDate).toLocaleDateString()}</p>
-                            </div>
-                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${diff <= 3 ? 'bg-red-100 text-red-600' : 'bg-white text-gray-600 border border-gray-200'}`}>{diff > 0 ? `${diff}d left` : 'Overdue'}</span>
-                          </div>
-                        );
-                      })}
+                {/* ── RECHARTS ANALYTICS GRAPHICS ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  
+                  {/* Weekly Progress Activity */}
+                  <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm col-span-1">
+                    <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-4">Weekly Progress Activity</h3>
+                    <div className="h-56">
+                      {!data.analytics?.weeklyActivity || data.analytics.weeklyActivity.reduce((acc, c) => acc + c.updates, 0) === 0 ? (
+                        <div className="h-full flex items-center justify-center text-xs text-gray-400 italic">No progress timeline logs yet.</div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={data.analytics.weeklyActivity}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                            <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                            <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                            <Bar dataKey="updates" fill="#6366F1" radius={[4, 4, 0, 0]} barSize={20} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
                     </div>
                   </div>
-                )}
 
-                {/* Recent Submissions */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="p-5 border-b border-gray-100 flex items-center gap-2"><FileText className="w-4 h-4 text-blue-500" /><h3 className="font-bold text-gray-900 text-sm">Recent Student Uploads</h3></div>
-                  {!data.recentSubmissions?.length
-                    ? <div className="p-8 text-center text-gray-400 text-sm">No files submitted yet.</div>
-                    : <div className="divide-y divide-gray-50">
-                      {data.recentSubmissions.map(f => (
-                        <div key={f._id} className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors">
-                          <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center shrink-0"><FileText className="w-4 h-4 text-blue-500" /></div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-gray-900 truncate">{f.fileName}</p>
-                            <p className="text-xs text-gray-400">By {f.studentId?.name} • {f.fileType} • v{f.version}</p>
-                          </div>
-                          <a href={f.cloudinaryUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 hover:bg-blue-100 transition-all"><Download className="w-4 h-4" /></a>
-                        </div>
-                      ))}
+                  {/* Department Distribution Donut */}
+                  <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm col-span-1">
+                    <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-4">Department Distribution</h3>
+                    <div className="h-56">
+                      {!data.analytics?.deptData || data.analytics.deptData.length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-xs text-gray-400 italic">No active projects assigned.</div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie 
+                              data={data.analytics.deptData} 
+                              cx="50%" cy="50%" 
+                              innerRadius={50} 
+                              outerRadius={75} 
+                              paddingAngle={2} 
+                              dataKey="value"
+                            >
+                              {data.analytics.deptData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={DONUT_COLORS[index % DONUT_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                            <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} layout="horizontal" verticalAlign="bottom" align="center" />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      )}
                     </div>
-                  }
+                  </div>
+
+                  {/* Student Progress Analytics */}
+                  <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm col-span-1">
+                    <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-4">Student Project Progress</h3>
+                    <div className="h-56">
+                      {!data.analytics?.progressData || data.analytics.progressData.length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-xs text-gray-400 italic">No project progress to display.</div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={data.analytics.progressData} layout="vertical">
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F3F4F6" />
+                            <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                            <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={60} />
+                            <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                            <Bar dataKey="progress" fill="#10B981" radius={[0, 4, 4, 0]} barSize={12} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Deadlines */}
+                  {data.deadlines?.length > 0 && (
+                    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                      <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-purple-500" /> Active Deadlines</h3>
+                      <div className="space-y-2">
+                        {data.deadlines.map(d => {
+                          const diff = Math.ceil((new Date(d.dueDate) - new Date()) / 86400000);
+                          return (
+                            <div key={d._id} className={`flex justify-between items-center p-3 rounded-xl border ${diff <= 3 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+                              <div>
+                                <p className={`text-sm font-bold ${diff <= 3 ? 'text-red-700' : 'text-gray-900'}`}>{d.title}</p>
+                                <p className="text-xs text-gray-400">{new Date(d.dueDate).toLocaleDateString()}</p>
+                              </div>
+                              <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${diff <= 3 ? 'bg-red-100 text-red-600' : 'bg-white text-gray-600 border border-gray-200'}`}>{diff > 0 ? `${diff}d left` : 'Overdue'}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recent Submissions */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="p-5 border-b border-gray-100 flex items-center gap-2"><FileText className="w-4 h-4 text-blue-500" /><h3 className="font-bold text-gray-900 text-sm">Recent Student Uploads</h3></div>
+                    {!data.recentSubmissions?.length
+                      ? <div className="p-8 text-center text-gray-400 text-sm">No files submitted yet.</div>
+                      : <div className="divide-y divide-gray-50">
+                        {data.recentSubmissions.map(f => (
+                          <div key={f._id} className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors">
+                            <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center shrink-0"><FileText className="w-4 h-4 text-blue-500" /></div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-gray-900 truncate">{f.fileName}</p>
+                              <p className="text-xs text-gray-400">By {f.studentId?.name} • {f.fileType} • v{f.version}</p>
+                            </div>
+                            <a href={f.cloudinaryUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 hover:bg-blue-100 transition-all"><Download className="w-4 h-4" /></a>
+                          </div>
+                        ))}
+                      </div>
+                    }
+                  </div>
                 </div>
               </div>
             )}
@@ -426,113 +575,8 @@ const FacultyDashboard = () => {
               </div>
             )}
 
-            {/* ── MY STUDENTS ── */}
-            {activeTab === 'students' && (
-              <div className="space-y-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-extrabold text-gray-900">My Students</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">
-                      {data.totalStudentHeads || 0} students supervised out of max {data.maxStudents || 60}
-                    </p>
-                    {/* Capacity bar */}
-                    <div className="w-64 bg-gray-100 rounded-full h-2 mt-2">
-                      <div
-                        className={`h-2 rounded-full transition-all ${((data.totalStudentHeads||0)/(data.maxStudents||60))>=0.9?'bg-red-500':((data.totalStudentHeads||0)/(data.maxStudents||60))>=0.6?'bg-yellow-500':'bg-gradient-to-r from-blue-500 to-indigo-500'}`}
-                        style={{ width: `${Math.min(Math.round(((data.totalStudentHeads||0)/(data.maxStudents||60))*100),100)}%` }}
-                      />
-                    </div>
-                  </div>
-                  <button onClick={fetchMyStudents} className="p-2 rounded-xl bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-500 transition-all"><RefreshCw className="w-4 h-4"/></button>
-                </div>
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input placeholder="Search students by project or name..." value={studentSearch} onChange={e => setStudentSearch(e.target.value)}
-                    className="w-full sm:w-96 pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
-                </div>
-                {loadingStudents ? (
-                  <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent"/></div>
-                ) : myStudents.length === 0 ? (
-                  <div className="text-center py-16 text-gray-400"><Users className="w-12 h-12 mx-auto mb-3 opacity-30"/><p className="font-medium">No students yet.</p></div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {myStudents.filter(s => !studentSearch || s.projectTitle?.toLowerCase().includes(studentSearch.toLowerCase()) || s.leader?.name?.toLowerCase().includes(studentSearch.toLowerCase())).map(s => (
-                      <div key={s._id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:border-indigo-200 hover:shadow-md transition-all">
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <p className="font-bold text-gray-900 text-sm line-clamp-2">{s.projectTitle}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">{s.leader?.name}</p>
-                          </div>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${s.projectStatus === 'Faculty Accepted' ? 'bg-green-50 text-green-700 border-green-200' : s.projectStatus === 'Submitted' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
-                            {s.projectStatus}
-                          </span>
-                        </div>
-                        <div className="mb-3">
-                          <div className="flex justify-between text-xs text-gray-500 mb-1">
-                            <span>Progress</span><span>{s.progress || 0}%</span>
-                          </div>
-                          <div className="w-full bg-gray-100 rounded-full h-1.5">
-                            <div className="bg-gradient-to-r from-blue-500 to-indigo-500 h-1.5 rounded-full" style={{ width: `${s.progress || 0}%` }}/>
-                          </div>
-                        </div>
-                        {s.latestMilestone && (
-                          <p className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg font-medium mb-2">📍 {s.latestMilestone}</p>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${s.finalSubmissionStatus === 'Accepted' ? 'bg-green-50 text-green-700 border-green-200' : s.finalSubmissionStatus === 'Rejected' ? 'bg-red-50 text-red-600 border-red-200' : s.finalSubmissionStatus === 'Pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
-                            Final: {s.finalSubmissionStatus}
-                          </span>
-                          {s.teamMembers?.length > 0 && <span className="text-[10px] text-gray-400">+{s.teamMembers.length} members</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── EXTENSIONS ── */}
-            {activeTab === 'extensions' && (
-              <div className="space-y-5">
-                <div className="flex items-center gap-3">
-                  <Calendar className="w-5 h-5 text-indigo-500" />
-                  <h2 className="text-xl font-extrabold text-gray-900">Deadline Extension Requests</h2>
-                  <button onClick={fetchExtensions} className="ml-auto p-1.5 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-500 transition-all"><RefreshCw className="w-4 h-4"/></button>
-                </div>
-                {loadingExtensions ? (
-                  <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent"/></div>
-                ) : extensionRequests.length === 0 ? (
-                  <div className="text-center py-16 text-gray-400"><Calendar className="w-12 h-12 mx-auto mb-3 opacity-30"/><p className="font-medium">No pending extension requests.</p></div>
-                ) : (
-                  <div className="space-y-4">
-                    {extensionRequests.map(req => (
-                      <div key={req._id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col md:flex-row gap-4 items-start">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${req.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' : req.status === 'Rejected' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{req.status}</span>
-                            <span className="text-xs text-gray-400">{req.deadlineId?.title}</span>
-                          </div>
-                          <p className="font-bold text-gray-900 text-sm">{req.projectId?.title}</p>
-                          <p className="text-xs text-gray-500">{req.studentId?.name} — Requested: <strong>{new Date(req.requestedDate).toLocaleDateString()}</strong></p>
-                          <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100 mt-2">{req.reason}</p>
-                          {req.documentUrl && <a href={req.documentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline mt-1 inline-block">View Document →</a>}
-                        </div>
-                        {req.status === 'Pending' && (
-                          <div className="flex flex-col gap-2 shrink-0">
-                            <button onClick={() => handleReviewExtension(req._id, 'Approved')} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl transition-all">✓ Approve</button>
-                            <button onClick={() => { const r = prompt('Rejection reason (optional):'); handleReviewExtension(req._id, 'Rejected', r || ''); }} className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition-all">✕ Reject</button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* ── PENDING REVIEW ── */}
             {activeTab === 'pending' && (
-
               <div className="space-y-5">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -568,7 +612,7 @@ const FacultyDashboard = () => {
 
                       {p.referenceLinks?.length > 0 && (
                         <div className="mb-4 flex flex-wrap gap-2">
-                          {p.referenceLinks.map((link, i) => <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1"><ExternalLink className="w-3 h-3" />{link.substring(0, 40)}...</a>)}
+                          {p.referenceLinks.map((link, i) => <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1"><ExternalLink className="w-3.5 h-3.5" />{link.substring(0, 40)}...</a>)}
                         </div>
                       )}
 
@@ -583,6 +627,219 @@ const FacultyDashboard = () => {
                     </div>
                   ))
                 }
+              </div>
+            )}
+
+            {/* ── MY STUDENTS ── */}
+            {activeTab === 'students' && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                  <div className="flex gap-2 flex-wrap flex-1">
+                    <div className="relative flex-1 min-w-[240px] max-w-sm">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input 
+                        placeholder="Search student by name or email..." 
+                        className="pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full"
+                        value={studentSearch} 
+                        onChange={e => setStudentSearch(e.target.value)} 
+                      />
+                    </div>
+                    <select 
+                      className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500" 
+                      value={studentBranch} 
+                      onChange={e => setStudentBranch(e.target.value)}
+                    >
+                      <option value="all">All Departments</option>
+                      <option value="Computer Science">Computer Science</option>
+                      <option value="Electrical">Electrical</option>
+                      <option value="Mechanical Polytechnic">Mechanical Polytechnic</option>
+                      <option value="BCA">BCA</option>
+                      <option value="BBA">BBA</option>
+                      <option value="MBA">MBA</option>
+                      <option value="MCA">MCA</option>
+                    </select>
+                  </div>
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                    {getSupervisedStudents().length} Supervised Students
+                  </span>
+                </div>
+
+                {getSupervisedStudents().length === 0 ? (
+                  <div className="p-10 text-center text-gray-400 bg-white rounded-2xl border border-gray-100">
+                    No students currently supervised.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {getSupervisedStudents().filter(s => {
+                      const matchSearch = !studentSearch || s.name.toLowerCase().includes(studentSearch.toLowerCase()) || s.email.toLowerCase().includes(studentSearch.toLowerCase());
+                      const matchBranch = studentBranch === 'all' || s.branch === studentBranch;
+                      return matchSearch && matchBranch;
+                    }).map(student => (
+                      <div 
+                        key={student._id} 
+                        className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-cyan-500 flex items-center justify-center text-white font-extrabold text-sm shadow-inner shrink-0">
+                                {student.name[0].toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-gray-900 truncate leading-tight">{student.name}</h4>
+                                <p className="text-xs text-gray-400 truncate mt-0.5">{student.course} • {student.branch}</p>
+                              </div>
+                            </div>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                              student.role === 'Team Leader' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-gray-50 text-gray-500 border-gray-200'
+                            }`}>
+                              {student.role}
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl mb-4">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Project</p>
+                            <p className="text-xs text-slate-800 font-bold line-clamp-1">{student.project.title}</p>
+                            
+                            <div className="flex items-center justify-between mt-3 text-xs">
+                              <span className="text-gray-400">Progress</span>
+                              <span className="font-bold text-indigo-600">{student.project.progress || 0}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1 overflow-hidden">
+                              <div 
+                                className="bg-indigo-600 h-1.5 rounded-full transition-all duration-500" 
+                                style={{ width: `${student.project.progress || 0}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <button 
+                          onClick={() => setSelectedStudent(student)} 
+                          className="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 hover:text-indigo-700 border border-indigo-100 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                        >
+                          <Users className="w-3.5 h-3.5" /> View Profile & Details
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── DEADLINE EXTENSIONS ── */}
+            {activeTab === 'extensions' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-gray-900 font-bold text-base">Deadline Extension Requests ({data.extensionRequests?.length || 0})</h2>
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                    Pending resolution
+                  </span>
+                </div>
+
+                {!data.extensionRequests?.length ? (
+                  <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center text-gray-400 text-sm">
+                    No active deadline extension requests at this time.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {data.extensionRequests.map(req => {
+                      const isPending = req.status === 'Pending';
+                      return (
+                        <div key={req._id} className={`bg-white rounded-2xl border p-5 shadow-sm border-l-4 ${
+                          req.status === 'Approved' ? 'border-l-green-500' :
+                          req.status === 'Rejected' ? 'border-l-red-500' : 'border-l-amber-500'
+                        }`}>
+                          <div className="flex flex-col md:flex-row justify-between gap-4">
+                            <div className="flex-1 space-y-3">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${
+                                    req.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' :
+                                    req.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                                  }`}>{req.status}</span>
+                                  <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100">
+                                    {req.deadlineId?.title || 'Milestone'}
+                                  </span>
+                                </div>
+                                <h4 className="text-gray-900 font-bold text-sm leading-tight">{req.projectId?.title}</h4>
+                                <p className="text-xs text-gray-400 mt-1">Student: <span className="font-semibold text-gray-600">{req.studentId?.name}</span> ({req.studentId?.email})</p>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4 max-w-md bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs">
+                                <div>
+                                  <p className="text-gray-400 font-medium">Current Deadline</p>
+                                  <p className="text-slate-800 font-bold mt-0.5">
+                                    {req.deadlineId?.dueDate ? new Date(req.deadlineId.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-purple-400 font-medium">Requested Extension</p>
+                                  <p className="text-purple-700 font-bold mt-0.5">
+                                    {new Date(req.requestedDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Reason for request</p>
+                                <p className="text-xs text-slate-700 leading-relaxed font-medium">{req.reason}</p>
+                              </div>
+
+                              {req.documentUrl && (
+                                <a 
+                                  href={req.documentUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-bold bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100"
+                                >
+                                  <FileText className="w-3.5 h-3.5" /> View Supporting Proof
+                                </a>
+                              )}
+                            </div>
+
+                            {isPending && (
+                              <div className="w-full md:w-64 border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-5 flex flex-col gap-3 justify-center">
+                                <div>
+                                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Remarks (Optional)</label>
+                                  <input 
+                                    className="w-full bg-slate-50 border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-500"
+                                    placeholder="Enter review remarks..."
+                                    value={extensionRemarks[req._id] || ''}
+                                    onChange={e => setExtensionRemarks(prev => ({ ...prev, [req._id]: e.target.value }))}
+                                  />
+                                </div>
+                                <div className="flex gap-2">
+                                  <button 
+                                    onClick={() => handleExtensionResolve(req._id, 'Approved')} 
+                                    disabled={extensionResolving[req._id]}
+                                    className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl shadow-md shadow-green-500/10 transition-all disabled:opacity-50"
+                                  >
+                                    Accept
+                                  </button>
+                                  <button 
+                                    onClick={() => handleExtensionResolve(req._id, 'Rejected')} 
+                                    disabled={extensionResolving[req._id]}
+                                    className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-md shadow-red-500/10 transition-all disabled:opacity-50"
+                                  >
+                                    Reject
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {!isPending && req.remarks && (
+                              <div className="w-full md:w-64 border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-5 flex flex-col gap-1 justify-center text-xs">
+                                <p className="text-gray-400 font-bold uppercase text-[9px] tracking-wider">Review Remarks</p>
+                                <p className="text-gray-700 italic">"{req.remarks}"</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
@@ -663,7 +920,7 @@ const FacultyDashboard = () => {
         </div>
       </div>
 
-      {/* Reject Modal (handles both proposal rejection and submission rejection) */}
+      {/* Reject Modal */}
       {rejectModal.id && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
@@ -723,6 +980,184 @@ const FacultyDashboard = () => {
           </motion.div>
         </div>
       )}
+
+      {/* ── QUICK PREVIEW MODAL ── */}
+      {selectedStudent && (() => {
+        const student = selectedStudent;
+        const project = student.project;
+        const projectFilesArr = data.projectFiles?.[project._id] || [];
+        const isSubmitted = project.status === 'Submitted';
+        
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.96, y: 15 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl h-[85vh] overflow-hidden flex flex-col border border-gray-100"
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 p-6 text-white shrink-0 flex justify-between items-center">
+                <div>
+                  <span className="text-[10px] font-bold bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 px-2.5 py-1 rounded-full uppercase tracking-wider block w-fit mb-1">{project.domain}</span>
+                  <h2 className="font-extrabold text-xl leading-tight truncate max-w-2xl">{project.title}</h2>
+                  <p className="text-indigo-200/80 text-xs mt-0.5">Assigned Leader: <span className="font-semibold text-white">{project.studentId?.name}</span> • {project.studentId?.course} {project.studentId?.branch}</p>
+                </div>
+                <button 
+                  onClick={() => { setSelectedStudent(null); setTimelineComment({}); }} 
+                  className="p-2 bg-white/10 hover:bg-white/20 text-white/90 rounded-2xl transition-all border border-white/10"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+                
+                {/* Left Panel: Profile & Team Details */}
+                <div className="w-full md:w-80 border-r border-gray-100 overflow-y-auto p-5 shrink-0 bg-slate-50/50 space-y-5">
+                  
+                  {/* Student details */}
+                  <div className="text-center pb-5 border-b border-gray-100">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-500 to-cyan-500 flex items-center justify-center text-white font-extrabold text-2xl shadow-inner mx-auto mb-3">
+                      {student.name[0].toUpperCase()}
+                    </div>
+                    <h3 className="font-bold text-gray-900 leading-tight">{student.name}</h3>
+                    <p className="text-xs text-gray-400 mt-1">{student.role} • Section {student.section}</p>
+                    <p className="text-xs text-indigo-600 font-semibold mt-0.5">{student.email}</p>
+                    {student.mobileNumber && <p className="text-[11px] text-gray-500 mt-1">{student.mobileNumber}</p>}
+                  </div>
+
+                  {/* Team Details */}
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Team Members ({1 + (project.teamMembers?.length || 0)})</p>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2.5 p-2 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+                        <div className="w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center text-[10px] font-bold text-indigo-700 shrink-0">L</div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-gray-800 truncate">{project.studentId?.name} (Leader)</p>
+                          <p className="text-[10px] text-gray-400 truncate">{project.studentId?.email}</p>
+                        </div>
+                      </div>
+                      {(project.teamMembers || []).map((m, i) => (
+                        <div key={i} className="flex items-center gap-2.5 p-2 bg-white border border-gray-100 rounded-xl">
+                          <div className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-[10px] font-bold text-gray-600 shrink-0">{i+1}</div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-gray-800 truncate">{m.name}</p>
+                            <p className="text-[10px] text-gray-400 truncate">{m.email}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Panel: Project Details & Stepper Timeline & Comments */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                  
+                  {/* Description */}
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Project Abstract</p>
+                    <p className="text-sm text-gray-600 border-l-4 border-indigo-200 pl-3 leading-relaxed font-medium bg-slate-50 p-3.5 rounded-xl">{project.description}</p>
+                  </div>
+
+                  {/* Stepper Timeline & Inline Commenting */}
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Progress Timeline Stepper</p>
+                      <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100">{project.progress || 0}% Completion</span>
+                    </div>
+
+                    {!project.timeline || project.timeline.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic bg-gray-50 border border-gray-100 p-4 rounded-xl text-center">Student has not logged progress updates yet.</p>
+                    ) : (
+                      <div className="relative border-l-2 border-indigo-100 pl-5 ml-2.5 space-y-5">
+                        {project.timeline.map((item) => (
+                          <div key={item._id} className="relative">
+                            
+                            {/* Bullet Node */}
+                            <span className="absolute -left-[27px] top-1.5 w-3 h-3 bg-indigo-600 rounded-full ring-4 ring-indigo-50" />
+
+                            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 shadow-sm">
+                              <div className="flex justify-between items-start flex-wrap gap-2 mb-1.5">
+                                <h5 className="font-bold text-gray-800 text-[10px] tracking-wide bg-indigo-100/50 text-indigo-700 px-2 py-0.5 rounded-md uppercase">{item.status}</h5>
+                                <span className="text-[10px] text-gray-400 font-bold">{new Date(item.timestamp).toLocaleString()}</span>
+                              </div>
+                              {item.remarks && (
+                                <p className="text-xs text-gray-600 leading-relaxed font-semibold italic">"{item.remarks}"</p>
+                              )}
+
+                              {/* Supervisor Comment Box */}
+                              <div className="mt-3 border-t border-slate-200/50 pt-2.5 space-y-2">
+                                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Supervisor Comment</p>
+                                {item.facultyComment ? (
+                                  <p className="text-xs text-indigo-700 bg-indigo-50 p-2.5 rounded-xl border border-indigo-100 font-semibold">"{item.facultyComment}"</p>
+                                ) : (
+                                  <div className="flex gap-2">
+                                    <input 
+                                      className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500" 
+                                      placeholder="Leave supervisor comment..."
+                                      value={timelineComment[`${project._id}_${item._id}`] || ''}
+                                      onChange={e => setTimelineComment(prev => ({ ...prev, [`${project._id}_${item._id}`]: e.target.value }))}
+                                    />
+                                    <button 
+                                      onClick={() => handleTimelineCommentSubmit(project._id, item._id)}
+                                      disabled={timelineSubmitting[`${project._id}_${item._id}`]}
+                                      className="px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] rounded-xl flex items-center justify-center transition-all disabled:opacity-50"
+                                    >
+                                      Comment
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Uploaded Files */}
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Uploaded Deliverables</p>
+                    {projectFilesArr.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic bg-gray-50 border border-gray-100 p-4 rounded-xl text-center">No project uploads logged yet.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto pr-1">
+                        {projectFilesArr.map(f => (
+                          <div key={f._id} className="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-800 truncate">{f.fileName}</p>
+                                <p className="text-[10px] text-gray-400">{f.fileType} • v{f.version}</p>
+                              </div>
+                            </div>
+                            <a href={f.cloudinaryUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100 rounded-xl transition-all shrink-0"><Download className="w-3.5 h-3.5" /></a>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Final deliverables evaluation banner */}
+                  {isSubmitted && project.finalSubmission && (
+                    <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+                      <h4 className="font-extrabold text-amber-800 text-xs uppercase mb-1">Final Submission Awaiting HOD Resolution</h4>
+                      <p className="text-xs text-amber-700 leading-relaxed font-medium">This project has uploaded final deliverables and is awaiting Heads of Department review and approval. You can verify links below:</p>
+                      <div className="flex gap-2 mt-2">
+                        {project.finalSubmission.liveLink && <a href={project.finalSubmission.liveLink} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">🌐 Live URL</a>}
+                        {project.finalSubmission.githubLink && <a href={project.finalSubmission.githubLink} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">💻 GitHub URL</a>}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 };
